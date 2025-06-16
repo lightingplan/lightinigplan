@@ -1,0 +1,212 @@
+body {
+  margin: 0;
+  font-family: sans-serif;
+  padding: 20px;
+}
+
+.toolbar {
+  padding: 10px;
+  background: #f0f0f0;
+  display: flex;
+  gap: 10px;
+}
+
+#stage {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 50px);
+  background-color: #fff;
+  border-top: 1px solid #ccc;
+
+  cursor: default;
+  overflow: visible; /* 必要に応じて変更 */
+
+}
+
+.lamp.selected {
+  border: 2px solid blue;
+  background-color: #ddf;
+}
+
+.line {
+      position: absolute;
+      top: 200px;
+      left: 200px;
+      width: 0px; /* 初期は0でよい */
+      height: 4px;
+      background: black;
+      transform-origin: 0 0;
+    }
+
+.selected-line {
+  background-color: red !important;
+}
+
+.lamp {
+  box-sizing: border-box; /* ←これを必ず入れる */
+  cursor: move;           /* pointer でもいいが move のほうがドラッグ感あり */
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border: 2px solid black;
+  border-radius: 5px;
+  background-color: white;
+  text-align: center;
+  line-height: 60px;
+  user-select: none;
+}
+
+.lamp.spot {
+  background-color: lightblue;
+}
+
+.lamp.par {
+  background-color: lightgreen;
+}
+
+.lamp.fresnel {
+  background-color: lightcoral;
+}
+
+.stand {
+  width: 60px;
+  height: 10px;
+  background-color: gray;
+  position: absolute;
+  border: 2px solid black;
+  cursor: pointer;
+}
+
+
+.stand.black_stand {
+  background-color: black;
+}
+
+.stand.silver_stand {
+  background-color: rgb(162, 162, 162);
+}
+
+.stand.woodvox {
+  background-color: bisque;
+  width: 60px;
+  height: 60px;
+}
+
+.stand.LS2 {
+  background-color: black;
+}
+
+.stand.selected {
+  border: 2px solid blue;
+  background-color: #ddf;
+}
+
+#connectModeBtn {
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+#connectModeBtn:hover {
+  transform: scale(1.1);
+}
+
+
+
+.stage1 {
+  background: #f0f0f0
+}
+
+.stage2 {
+  background: #f0f0f0
+}
+
+.stage3 {
+  background: #f0f0f0;
+}
+
+.rectangle {
+  width: 1000px;
+  height: 150px;
+  border: 2px solid black; /* 黒い枠線 */
+  background-color: transparent; /* 塗りつぶしなし */
+  position: absolute;
+  top: 60px;
+  left: 100px;
+}
+
+.kyoutaku {
+  width: 100px;
+  height: 60px;
+  border: 2px solid black;
+  background-color: rgb(70, 70, 70); 
+  position: absolute;
+  top: 150px;
+  left: 100px;
+}
+
+.baton1 {
+  width: 1000px;
+  height: 10px;
+  border: 2px solid black; /* 黒い枠線 */
+  background-color: black; /* 塗りつぶしなし */
+  position: absolute;
+  top: 60px;
+  left: 100px;
+}
+
+.baton2 {
+  width: 1000px;
+  height: 10px;
+  border: 2px solid black; /* 黒い枠線 */
+  background-color: black; /* 塗りつぶしなし */
+  position: absolute;
+  top: 300px;
+  left: 100px;
+}
+
+.rectangle_medhiho {
+  width: 1000px;
+  height: 70px;
+  border: 2px solid black; /* 黒い枠線 */
+  background-color: transparent; /* 塗りつぶしなし */
+  position: absolute;
+  top: 320px;
+  left: 100px;
+}
+
+.rectangle_medhiho2 {
+  width: 1000px;
+  height: 250px;
+  border: 2px solid black; /* 黒い枠線 */
+  border-width: 5px;
+  background-color: transparent; /* 塗りつぶしなし */
+  position: absolute;
+  top: 50px;
+  left: 100px;
+}
+
+#editorCanvas {
+  width: 800px;
+  height: 500px;
+  border: 2px solid #333;
+  position: relative;
+  background-color: #f0f0f0;
+}
+
+.rect {
+  position: absolute;
+  width: 100px;
+  height: 60px;
+  border: 2px solid black;
+  background-color: transparent;
+  box-sizing: border-box;
+}
+
+.resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #000;
+  right: 0;
+  bottom: 0;
+  cursor: se-resize;
+}
