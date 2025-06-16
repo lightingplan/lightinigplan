@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>会場選択＆表示＋灯体種類選択＋信号線</title>
+  <style>
+    body { font-family: sans-serif; }
+    #venueSelector {
+      text-align: center;
+      margin: 30px auto;
+    }
+    #venueList button {
+      display: block;
+      width: 300px;
+      margin: 10px auto;
+      padding: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #stage {
+      width: 800px;
+      height: 600px;
+      margin: 0 auto;
+      position: relative;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      border: 2px solid #ccc;
+      display: none;
+      user-select: none;
+      overflow: auto;
+    }
+    #toggleEditBtn, #addcontroller {
+      display: inline-block;
+      margin: 10px;
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #controllerSelector {
+      font-size: 14px;
+      margin-left: 10px;
+    }
+    .controller {
+      width: 60px;
+      height: 30px;
+      background-color: gray;
+      color: white;
+      font-size: 12px;
+      text-align: center;
+      line-height: 30px;
+      position: absolute;
+      border: 2px solid #555;
+      cursor: move;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    .controller.selected {
+      border-color: #00f;
+      box-shadow: 0 0 8px #00f;
+    }
+  </style>
+</head>
+<body>
+
+<div id="venueSelector">
+  <h2>会場を選択してください</h2>
+  <div id="venueList"></div>
+</div>
+
+<div id="stage">
+  <button id="toggleEditBtn">編集モード: ON</button>
+  <select id="controllerSelector">
+    <option value="phantom2048">phantom2048</option>
+    <option value="SEANESETTER">SEANESETTER</option>
+  </select>
+  <button id="addcontroller">コントローラー追加</button>
+</div>
+
+<script>
+  // 仮の会場リスト
+  const venues = [
+    { id: "hallA", name: "ホールA", backgroundImage: "hallA.jpg" },
+    { id: "hallB", name: "ホールB", backgroundImage: "hallB.jpg" }
+  ];
+
+  const venueSelector = document.getElementById("venueSelector");
+  const venueListDiv = document.getElementById("venueList");
+  const stage = document.getElementById("stage");
+  const toggleEditBtn = document.getElementById("toggleEditBtn");
+  const addControllerBtn = document.getElementById("addcontroller");
+  const standController = document.getElementById("controllerSelector");
+
+  let editMode = true;
+  let controllerCount = 0;
+  const selectedControllers = new Set();
+  let lastSelectedController = null;
+
+  function updateLineConnectModeUI() {
+    // 仮関数（必要に応じて実装）
+  }
+
+  function updateEquipmentList() {
+    // 仮関数（必要に応じて実装）
+  }
+
+  function renderVenueList() {
+    venueListDiv.innerHTML = "";
+    venues.forEach(v => {
+      const btn = document.createElement("button");
+      btn.textContent = v.name;
+      btn.onclick = () => loadVenue(v.id);
+      venueListDiv.appendChild(btn);
+    });
+  }
+
+  function loadVenue(id) {
+    const venue = venues.find(v => v.id === id);
+    if (!venue) return;
+
+    venueSelector.style.display = "none";
+    stage.style.display = "block";
+    stage.style.backgroundImage = `url('${venue.backgroundImage}')`;
+
+    // コントローラーリセット
+    stage.querySelectorAll(".controller").forEach(el => el.remove());
+
+    updateLineConnectModeUI();
+  }
+
+  function makeDraggable(el) {
+    let offsetX = 0, offsetY = 0;
+
+    el.onmousedown = (e) => {
+      if (!editMode) return;
+
+      offsetX = e.offsetX;
+      offsetY = e.offsetY;
+
+      const onMouseMove = (e2) => {
+        let newLeft = e2.pageX - stage.offsetLeft - offsetX;
+        let newTop = e2.pageY - stage.offsetTop - offsetY;
+
+        newLeft = Math.min(Math.max(0, newLeft), stage.clientWidth - el.offsetWidth);
+        newTop = Math.min(Math.max(0, newTop), stage.clientHeight - el.offsetHeight);
+
+        el.style.left = newLeft + "px";
+        el.style.top = newTop + "px";
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    };
+  }
+
+  toggleEditBtn.onclick = () => {
+    editMode = !editMode;
+    toggleEditBtn.textContent = "編集モード: " + (editMode ? "ON" : "OFF");
+
+    stage.querySelectorAll(".controller").forEach(controller => {
+      if (editMode) {
+        makeDraggable(controller);
+        controller.style.borderColor = "#555";
+      } else {
+        controller.onmousedown = null;
+        controller.style.borderColor = "#aaa";
+      }
+    });
+  };
+
+  addControllerBtn.onclick = () => {
+    controllerCount++;
+
+    const selectedType = standController.value;
+    let classType = "";
+    let displayName = "";
+
+    switch (selectedType) {
+      case "phantom2048":
+        classType = "phantom2048";
+        displayName = "phantom2048";
+        break;
+      case "SEANESETTER":
+        classType = "SEANESETTER";
+        displayName = "SEANESETTER";
+        break;
+      default:
+        classType = "";
+        displayName = "C";
+    }
+
+    const controller = document.createElement("div");
+    controller.className = `controller ${classType}`;
+    controller.textContent = `${displayName}${controllerCount}`;
+    controller.style.left = "100px";
+    controller.style.top = (100 + controllerCount * 40) + "px";
+
+    controller.addEventListener("click", (e) => handleOtherClick(controller, e));
+
+    stage.appendChild(controller);
+
+    const resizeHandle = document.createElement("div");
+    resizeHandle.className = "resize-handle";
+    controller.appendChild(resizeHandle);
+
+    let originalAspectRatio = 1;
+
+    // リサイズ機能を実装
+    let isResizing = false;
+
+    resizeHandle.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      isResizing = true;
+
+      const rect = controller.getBoundingClientRect();
+      originalAspectRatio = rect.width / rect.height;
+    });
+    document.addEventListener("mousemove", (e) => {
+    if (isResizing) {
+      const rect = controller.getBoundingClientRect();
+      let newWidth = e.clientX - rect.left;
+      let newHeight = e.clientY - rect.top;
+
+    // Shiftキーが押されていたら縦横比を固定
+    if (e.shiftKey) {
+      if (newWidth / newHeight > originalAspectRatio) {
+        newWidth = newHeight * originalAspectRatio;
+      } else {
+        newHeight = newWidth / originalAspectRatio;
+      }
+    }
+
+    // 最小サイズを制限（オプションだけどおすすめ）
+    newWidth = Math.max(newWidth, 20);
+    newHeight = Math.max(newHeight, 20);
+
+    controller.style.width = newWidth + "px";
+    controller.style.height = newHeight + "px";
+  }
+});
+
+document.addEventListener("mouseup", () => {
+  isResizing = false;
+});
+
+  
+
+  makeDraggable(controller);
+  if (editMode) makeDraggable(controller);
+
+  // クリックイベント追加（選択 + 信号線接続判定）
+  controller.addEventListener("click", (e) => {
+    e.stopPropagation();
+    handleControllerClick(controller, e);
+  });
+  
+
+  const rotateHandle = document.createElement("div");
+  rotateHandle.className = "rotate-handle";
+  controller.appendChild(rotateHandle);
+
+  let isRotating = false;
+
+  rotateHandle.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+    isRotating = true;
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (isRotating) {
+      const rect = controller.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+      const deg = angle * (180 / Math.PI);
+
+      controller.style.transform = `rotate(${deg}deg)`;
+      controller.dataset.angle = deg; // 保存しておくと便利
+    }
+  });
+
+  document.addEventListener("mouseup", () => {
+    isRotating = false;
+  });
+
+// たとえば灯体追加のところの末尾に
+updateEquipmentList();
+    makeDraggable(controller);
+
+    controller.addEventListener("click", (e) => {
+      e.stopPropagation();
+      // ここでコントローラー選択処理などを追加可能
+    });
+
+    console.log(`追加：${displayName}${controllerCount}`);
+    updateEquipmentList();
+  };
+
+  renderVenueList(); // 初期化
+
+  function handleOtherClick(controller, e) {
+      const multiSelect = e.ctrlKey || e.metaKey;
+      const shiftSelect = e.shiftKey;
+
+    if (lineConnectMode) {
+    // 接続モード中は2つの灯体を選ぶと線を引く
+    if (!connectingControllers.includes(controller)) {
+      connectingControllers.push(controller);
+      controller.classList.add("selected");
+    }
+    if (connectingControllers.length === 2) {
+      // 既に同じ線があれば引かない
+      if (!lineExists(connectingControllers[0], connectingControllers[1])) {
+        addSignalLine(connectingControllers[0], connectingControllers[1]);
+      }
+      // 選択解除・リセット
+      connectingControllers.forEach(l => l.classList.remove("selected"));
+      connectingControllers = [];
+    }
+    return;
+  }
+
+  // 普通の選択モード
+      const controllers = Array.from(stage.querySelectorAll(".controller"));
+      if (shiftSelect && lastSelectedController && controllers.includes(lastSelectedController)) {
+        const startIndex = controllers.indexOf(lastSelectedController);
+        const endIndex = controllers.indexOf(controller);
+        const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+        selectedControllers.forEach(l => l.classList.remove("selected"));
+        selectedControllers.clear();
+
+        for (let i = from; i <= to; i++) {
+          const l = controllers[i];
+          selectedControllers.add(l);
+          l.classList.add("selected");
+        }
+      } else if (multiSelect) {
+        if (selectedControllers.has(controller)) {
+          selectedControllers.delete(controller);
+          controller.classList.remove("selected");
+        } else {
+          selectedControllers.add(controller);
+          controller.classList.add("selected");
+        }
+        lastSelectedController = controller;
+      } else {
+        selectedControllers.forEach(l => l.classList.remove("selected"));
+        selectedControllers.clear();
+        selectedControllers.add(controller);
+        controller.classList.add("selected");
+        lastSelectedController = controller;
+      }
+    }
+</script>
+
+</body>
+</html>

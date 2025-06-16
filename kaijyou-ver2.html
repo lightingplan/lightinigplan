@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>会場選択プロトタイプ</title>
+<style>
+  body { font-family: sans-serif; }
+  #venueSelector {
+    width: 300px;
+    margin: 30px auto;
+    text-align: center;
+  }
+  #venueList button {
+    display: block;
+    width: 100%;
+    margin: 5px 0;
+    padding: 8px;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  #stage {
+    border: 1px solid #ccc;
+    width: 800px;
+    height: 600px;
+    margin: 20px auto;
+    position: relative;
+    background: #f8f8f8;
+    display: none;
+  }
+  #backBtn {
+    display: block;
+    margin: 10px auto;
+    padding: 6px 12px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  /* ホールAの背景イメージ例（PDFではなく画像） */
+  #stage.hallA {
+    background: url('hallA-background.png') no-repeat center/contain;
+  }
+
+  /* 他のホール用にも必要に応じて背景設定可能 */
+  #stage.hallB {
+    background: url('hallB-background.png') no-repeat center/contain;
+  }
+</style>
+</head>
+<body>
+
+<div id="venueSelector">
+  <h3>会場を選んでください</h3>
+  <button onclick="createNewVenue()">新規作成</button>
+  <div id="venueList"></div>
+</div>
+
+<div id="stage">
+  <button id="backBtn">← 会場選択に戻る</button>
+</div>
+
+<script>
+// 会場のプリセットデータ
+const venues = [
+  { id: "hallA", name: "ホールA" },
+  { id: "hallB", name: "ホールB" }
+];
+
+const venueListDiv = document.getElementById("venueList");
+const stage = document.getElementById("stage");
+const backBtn = document.getElementById("backBtn");
+
+function renderVenueList() {
+  venueListDiv.innerHTML = "";
+  venues.forEach(v => {
+    const btn = document.createElement("button");
+    btn.textContent = v.name;
+    btn.onclick = () => loadVenue(v.id);
+    venueListDiv.appendChild(btn);
+  });
+}
+
+function loadVenue(id) {
+  // 会場選択画面を非表示に、会場画面を表示
+  document.getElementById("venueSelector").style.display = "none";
+  stage.style.display = "block";
+
+  // 背景クラスを切り替える
+  stage.className = "";
+  stage.classList.add(id);
+}
+
+// 戻るボタン
+backBtn.onclick = () => {
+  stage.style.display = "none";
+  stage.className = ""; // 背景リセット
+  document.getElementById("venueSelector").style.display = "block";
+};
+
+// 新規作成（未実装）
+function createNewVenue() {
+  alert("まだ未実装です！");
+}
+
+renderVenueList();
+</script>
+
+</body>
+</html>

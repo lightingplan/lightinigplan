@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>照明図プロトタイプ</title>
+  <style>
+    body { font-family: sans-serif; }
+    #stage {
+      border: 1px solid #ccc;
+      width: 800px;
+      height: 600px;
+      position: relative;
+      background: #f8f8f8;
+      margin: 20px auto;
+    }
+    .box {
+      position: absolute;
+      background: #bbb;
+      border: 2px solid #888;
+    }
+    .light {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      background: yellow;
+      border-radius: 50%;
+      border: 2px solid orange;
+      cursor: move;
+    }
+    .addr {
+  position: absolute;
+  left: 50%;
+  bottom: -18px;  /* 灯体のすぐ下に */
+  transform: translateX(-50%) rotate(0deg) scale(1);
+  font-size: 10px;
+  color: black;
+  pointer-events: auto;
+  user-select: none;
+}
+
+    svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* pointer-events: none; ← これを削除！！ */
+}
+
+    .label {
+      font-size: 12px;
+      fill: black;
+    }
+    button { margin: 10px; }
+  </style>
+</head>
+<body>
+
+<h2 style="text-align:center;">照明図プロトタイプ（信号線つき）</h2>
+
+<div style="text-align:center;">
+  <button onclick="addBox()">会場図形を追加</button>
+  <button onclick="addLight()">灯体を追加</button>
+</div>
+
+<div id="stage">
+  <svg id="cables" width="800" height="600"></svg>
+</div>
+
+<div id="controlPanel" style="position: fixed; bottom: 20px; left: 20px; background: #fff; border: 1px solid #ccc; padding: 10px; display: none; width: 220px; font-size: 14px; z-index: 1000;">
+  <div>
+    <label for="rotateRange">回転角度: <span id="rotateValue">0</span>°</label><br />
+    <input type="range" id="rotateRange" min="0" max="360" value="0" />
+  </div>
+  <div style="margin-top: 10px;">
+    <label for="scaleRange">大きさ: <span id="scaleValue">1.0</span></label><br />
+    <input type="range" id="scaleRange" min="0.1" max="3" step="0.01" value="1" />
+  </div>
+  <button id="closePanel" style="margin-top:10px;">閉じる</button>
+</div>
+
+
+<script>
+  const stage = document.getElementById("stage");
+  const cables = document.getElementById("cables");
+  let selected = [];
+
+  function addBox() {
+    const box = document.createElement("div");
+    box.className = "box";
+    box.style.width = "200px";
+    box.style.height = "100px";
+    box.style.left = "100px";
+    box.style.top = "100px";
+    stage.appendChild(box);
+    makeDraggable(box);
+  }
+
+  function addLight() {
+  const light = document.createElement("div");
+  light.className = "light";
+  light.style.left = "150px";
+  light.style.top = "150px";
+
+  light._rotateDeg = 0;
+  light._scale = 1;
+  applyTransform(light, 0, 1);
+
+  // アドレス表示
+  const addr = document.createElement("div");
+  addr.className = "addr";
+  addr.innerText = "001";
+  light.appendChild(addr);
+
+  addr.onclick = () => {
+    const newAddr = prompt("アドレスを入力", addr.innerText);
+    if (newAddr) addr.innerText = newAddr;
+  };
+
+  light.onclick = (e) => {
+    e.stopPropagation();
+
+    currentLight = light;
+    rotateRange.value = light._rotateDeg;
+    scaleRange.value = light._scale;
+    rotateValue.textContent = light._rotateDeg;
+    scaleValue.textContent = light._scale.toFixed(2);
+
+    controlPanel.style.display = "block";
+  };
+
+  stage.appendChild(light);
+  makeDraggable(light);
+
+  // 初期状態でaddrのtransformもセット
+  updateAddrTransform(light, addr);
+}
+
+// transform適用関数を拡張してaddrも調整
+function applyTransform(el, rotateDeg, scale) {
+  el.style.transform = `rotate(${rotateDeg}deg) scale(${scale})`;
+
+  // addr要素を取得して逆変形をかける
+  const addr = el.querySelector(".addr");
+  if (addr) {
+    // 逆回転・逆スケール
+    addr.style.transform = `translateX(-50%) rotate(${-rotateDeg}deg) scale(${1 / scale})`;
+  }
+}
+
+// スライダーのイベントにapplyTransform呼び出しがあるので、addrの逆変形も自動的に更新されます
+
+
+  function makeDraggable(el) {
+    let offsetX, offsetY;
+
+    el.onmousedown = (e) => {
+      offsetX = e.offsetX;
+      offsetY = e.offsetY;
+      document.onmousemove = (e2) => {
+        el.style.left = e2.pageX - stage.offsetLeft - offsetX + "px";
+        el.style.top = e2.pageY - stage.offsetTop - offsetY + "px";
+        updateCables();
+      };
+      document.onmouseup = () => {
+        document.onmousemove = null;
+      };
+    };
+  }
+
+  let cableList = [];
+  let selectedCable = null;
+
+  function drawCable(el1, el2) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("stroke-width", "6"); // 目安: 4～6
+    line.setAttribute("stroke", "green");
+    line.setAttribute("stroke-linecap", "round"); // 丸みで見た目もUP
+    line.style.cursor = "pointer";
+
+    line.style.cursor = "pointer";
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("class", "label");
+    label.style.cursor = "pointer";
+    label._customText = null; // 編集された内容を保存
+
+    line.onclick = () => {
+      if (selectedCable && selectedCable.line !== line) {
+        selectedCable.line.setAttribute("stroke", "green");
+      }
+      selectedCable = cableList.find(c => c.line === line);
+      line.setAttribute("stroke", "red");
+    };
+
+    label.ondblclick = () => {
+      const newLabel = prompt("表示するケーブル長さやメモを入力", label.textContent);
+      if (newLabel !== null) {
+        label._customText = newLabel;
+        label.textContent = newLabel;
+      }
+    };
+
+    cables.appendChild(line);
+    cables.appendChild(label);
+
+    cableList.push({ el1, el2, line, label });
+    updateCables();
+  }
+
+  function updateCables() {
+    for (let cable of cableList) {
+      const r = 15;
+      const rect1 = cable.el1.getBoundingClientRect();
+      const rect2 = cable.el2.getBoundingClientRect();
+      const x1 = rect1.left + r - stage.getBoundingClientRect().left;
+      const y1 = rect1.top + r - stage.getBoundingClientRect().top;
+      const x2 = rect2.left + r - stage.getBoundingClientRect().left;
+      const y2 = rect2.top + r - stage.getBoundingClientRect().top;
+
+      cable.line.setAttribute("x1", x1);
+      cable.line.setAttribute("y1", y1);
+      cable.line.setAttribute("x2", x2);
+      cable.line.setAttribute("y2", y2);
+
+      let text = cable.label._customText;
+      if (!text) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        text = (dist / 100).toFixed(1) + "m";
+      }
+
+      cable.label.textContent = text;
+      cable.label.setAttribute("x", (x1 + x2) / 2);
+      cable.label.setAttribute("y", (y1 + y2) / 2 - 5);
+    }
+  }
+
+  // キーボードで削除
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Delete" && selectedCable) {
+      selectedCable.line.remove();
+      selectedCable.label.remove();
+      cableList = cableList.filter(c => c !== selectedCable);
+      selectedCable = null;
+    }
+  });
+
+  function applyTransform(el, rotateDeg, scale) {
+  el.style.transform = `rotate(${rotateDeg}deg) scale(${scale})`;
+}
+
+function addLight() {
+  const light = document.createElement("div");
+  light.className = "light";
+  light.style.left = "150px";
+  light.style.top = "150px";
+
+  light._rotateDeg = 0;
+  light._scale = 1;
+  applyTransform(light, 0, 1);
+
+  // アドレス表示（省略）
+
+  light.onclick = (e) => {
+    e.stopPropagation();
+
+    let angle = prompt("回転角度を入力してください（度）", light._rotateDeg);
+    let scale = prompt("大きさの倍率を入力してください（例：1は通常、0.5は半分）", light._scale);
+
+    angle = parseFloat(angle);
+    scale = parseFloat(scale);
+
+    if (!isNaN(angle) && !isNaN(scale)) {
+      light._rotateDeg = angle;
+      light._scale = scale;
+      applyTransform(light, angle, scale);
+    }
+  };
+
+  stage.appendChild(light);
+  makeDraggable(light);
+}
+
+const controlPanel = document.getElementById("controlPanel");
+const rotateRange = document.getElementById("rotateRange");
+const scaleRange = document.getElementById("scaleRange");
+const rotateValue = document.getElementById("rotateValue");
+const scaleValue = document.getElementById("scaleValue");
+const closePanel = document.getElementById("closePanel");
+
+let currentLight = null;
+
+function applyTransform(el, rotateDeg, scale) {
+  el.style.transform = `rotate(${rotateDeg}deg) scale(${scale})`;
+}
+
+function addLight() {
+  const light = document.createElement("div");
+  light.className = "light";
+  light.style.left = "150px";
+  light.style.top = "150px";
+
+  light._rotateDeg = 0;
+  light._scale = 1;
+  applyTransform(light, 0, 1);
+
+  // 住所（省略）
+
+  light.onclick = (e) => {
+    e.stopPropagation();
+
+    currentLight = light;
+    // スライダーを現在値にセット
+    rotateRange.value = light._rotateDeg;
+    scaleRange.value = light._scale;
+    rotateValue.textContent = light._rotateDeg;
+    scaleValue.textContent = light._scale.toFixed(2);
+
+    controlPanel.style.display = "block";
+  };
+
+  stage.appendChild(light);
+  makeDraggable(light);
+}
+
+// スライダーのイベント設定
+rotateRange.addEventListener("input", () => {
+  if (!currentLight) return;
+  const deg = parseInt(rotateRange.value);
+  currentLight._rotateDeg = deg;
+  rotateValue.textContent = deg;
+  applyTransform(currentLight, deg, currentLight._scale);
+});
+
+scaleRange.addEventListener("input", () => {
+  if (!currentLight) return;
+  const scale = parseFloat(scaleRange.value);
+  currentLight._scale = scale;
+  scaleValue.textContent = scale.toFixed(2);
+  applyTransform(currentLight, currentLight._rotateDeg, scale);
+});
+
+// 閉じるボタン
+closePanel.addEventListener("click", () => {
+  controlPanel.style.display = "none";
+  currentLight = null;
+});
+addr.style.transform = `translateX(-50%) rotate(${-light._rotateDeg}deg) scale(${1 / light._scale})`;
+
+
+
+
+</script>
+
+
+</body>
+</html>

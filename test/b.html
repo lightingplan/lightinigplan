@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>線をドラッグで回転</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      background: #f0f0f0;
+    }
+
+    #line {
+      position: absolute;
+      top: 200px;
+      left: 200px;
+      width: 0px; /* 初期は0でよい */
+      height: 4px;
+      background: black;
+      transform-origin: 0 0;
+    }
+
+    #handle {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: red;
+      border-radius: 50%;
+      cursor: grab;
+    }
+  </style>
+</head>
+<body>
+
+<div id="line"></div>
+<div id="handle"></div>
+
+<script>
+  const line = document.getElementById("line");
+  const handle = document.getElementById("handle");
+
+  const origin = { x: 200, y: 200 }; // 回転の中心（線の始点）
+  let isDragging = false;
+
+  function updateLine(x, y) {
+    const dx = x - origin.x;
+    const dy = y - origin.y;
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    line.style.width = length + 'px';
+    line.style.transform = `rotate(${angle}deg)`;
+    line.style.left = origin.x + 'px';
+    line.style.top = origin.y + 'px';
+
+    handle.style.left = (origin.x + dx - 10) + 'px'; // -10 はhandleの半分
+    handle.style.top = (origin.y + dy - 10) + 'px';
+  }
+
+  handle.addEventListener('mousedown', () => {
+    isDragging = true;
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      updateLine(e.clientX, e.clientY);
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+  });
+
+  // 初期位置を少し離れた場所にしておく
+  updateLine(origin.x + 100, origin.y + 0);
+</script>
+
+</body>
+</html>

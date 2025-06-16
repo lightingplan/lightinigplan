@@ -1,0 +1,2180 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>会場選択＆表示＋灯体種類選択＋信号線</title>
+  <style>
+    body { font-family: sans-serif; }
+    #venueSelector {
+      text-align: center;
+      margin: 30px auto;
+    }
+    #venueList button {
+      display: block;
+      width: 300px;
+      margin: 10px auto;
+      padding: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #stage {
+      width: 800px;
+      height: 600px;
+      margin: 0 auto;
+      position: relative;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      border: 2px solid #ccc;
+      display: none;
+      user-select: none;
+      overflow: auto;
+    }
+    #toggleEditBtn, #addLightBtn, #backBtn, #addother, #addstand, #addcontroller{
+      display: inline-block;
+      margin: 10px;
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #fixtureSelector {
+      font-size: 14px;
+      margin-left: 10px;
+    }
+    .light {
+      width: 60px;
+      height: 30px;
+      background-color: gray;
+      color: white;
+      font-size: 12px;
+      text-align: center;
+      line-height: 30px;
+      position: absolute;
+      border: 2px solid #555;
+      cursor: move;
+      user-select: none;
+      box-sizing: border-box;
+      transition: box-shadow 0.3s;
+      overflow: visible; 
+      resize: none;
+      z-index: 3; /* 背景 */
+    }
+
+    .resize-handle {
+      width: 10px;
+      height: 10px;
+      background-color: black;
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      cursor: nwse-resize;
+    }
+    
+    .light.stinger { 
+      width: 100%;
+      max-width: 100px;
+      height: auto;
+      aspect-ratio: 1 / 1;             /* 正方形にしたい場合 */
+      object-fit: cover;
+      background: url("images/STINGER.png") no-repeat center center;
+      background-size: contain; 
+                  }
+    .light.sweeper {
+      width: 28%;
+      max-width: 150px; /* stingerと同じ幅制限 */
+      aspect-ratio: 2 / 1; /* 横長（例：100px × 50px） */
+      background: url("images/sweepar.png") no-repeat center center;
+      background-size: contain;
+    }
+    .light.sunray { 
+      width: 28%;
+      max-width: 150px; /* ← stingerやsweeperと揃える */
+      aspect-ratio: 1 / 1; /* 横長比率（必要に応じて1.5や2.5などに） */
+      background: url("images/sunray.png") no-repeat center center;
+      background-size: contain;
+                  }
+    .light.tiny { background-color: rgb(255, 255, 255); }
+    .light.inno {
+      width: 28%;
+      max-width: 50px;
+      aspect-ratio: 1 / 2; /* ← innoが正方形ならこれ、横長/縦長なら変える */
+      background: url("images/inno.png") no-repeat center center;
+      background-size: contain;
+    }
+
+    .light.mk3 { 
+      width: 28%;
+      max-width: 50px;
+      aspect-ratio: 1 / 2; 
+      background: url("images/mk3.png") no-repeat center center; 
+      background-size: contain;
+                  }
+    .light.dotz { 
+      width: 28%;
+      max-width: 50px;
+      aspect-ratio: 1 / 2; 
+      background: url("images/dots.png")no-repeat center center; 
+      background-size: contain;; 
+                  }
+    .light.mk2 { 
+      width: 28%;
+      max-width: 50px;
+      aspect-ratio: 1 / 2; 
+      background: url("images/mk2.png")no-repeat center center; 
+      background-size: contain;; 
+                  }
+    .light.ledpar { 
+      width: 28%;
+      max-width: 50px;
+      aspect-ratio: 1 / 2; 
+      background: url("images/par.png")no-repeat center center; 
+      background-size: contain;; ; 
+                  }
+    .light.cspot { background-color: rgb(34, 139, 97); }
+    .light.metubusi { 
+      width: 28%;
+      max-width: 100px;
+      aspect-ratio: 1 / 1; 
+      background: url("images/miniburu.png")no-repeat center center; 
+      background-size: contain;; ; 
+                  }
+    .light.selected {
+      border-color: #00f;
+      box-shadow: 0 0 8px #00f;
+    }
+    .light .controls {
+      position: absolute;
+      top: -20px;
+      right: -20px;
+      display: flex;
+      gap: 2px;
+      visibility: hidden;
+    }
+    .light:hover .controls {
+      visibility: visible;
+    }
+    .control-btn {
+      width: 18px;
+      height: 18px;
+      font-size: 12px;
+      line-height: 16px;
+      text-align: center;
+      background-color: #333;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      user-select: none;
+    }
+    /* SVG 信号線用スタイル */
+    #signalLines {
+      position: absolute;
+      top: 0; left: 0;
+      pointer-events: none; /* 基本は線はドラッグ無効 */
+      width: 800px;
+      height: 600px;
+      z-index: 0; /* stageより前面 */
+    }
+    line.signal-line {
+      stroke: orange;
+      stroke-width: 3;
+      cursor: pointer;
+      pointer-events: all; /* 線のクリックを有効化 */
+      transition: stroke 0.3s;
+    }
+    line.signal-line.selected {
+      stroke: deepskyblue;
+      stroke-width: 5;
+    }
+    .handle-br {
+      bottom: 0;
+      right: 0;
+    }
+
+  .rotate-handle {
+  width: 10px;
+  height: 10px;
+  background: red;
+  border-radius: 50%;
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: grab;
+}
+
+.length-label {
+  position: absolute;
+  background: white;
+  border: 1px solid black;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  z-index: 1000;
+}
+
+.other {
+      width: 60px;
+      height: 30px;
+      background-color: gray;
+      color: white;
+      font-size: 12px;
+      text-align: center;
+      line-height: 30px;
+      position: absolute;
+      border: 2px solid #555;
+      cursor: move;
+      user-select: none;
+      box-sizing: border-box;
+      transition: box-shadow 0.3s;
+      overflow: visible;
+      resize: none;
+      z-index: 1; /* 背景 */
+    }
+
+    .other.woodbox {
+      width: 60px;
+      height: 60px;
+      background-color: rgb(151, 86, 6);
+    }
+
+    .other.tutu {
+      clip-path: polygon(50% 0, 100% 100%, 0 100%);
+      height: calc(60px / 2 * tan(60deg));
+      width: 60px;
+      background-color: rgb(67, 141, 219);
+    }
+
+
+    .other.selected {
+      border-color: #00f;
+      box-shadow: 0 0 8px #00f;
+    }
+
+    .othercontrols {
+      position: absolute;
+      top: -20px;
+      right: -20px;
+      display: flex;
+      gap: 2px;
+      visibility: hidden;
+    }
+
+    .other:hover .othercontrols {
+      visibility: visible;
+    }
+
+    #otherSelector {
+      font-size: 14px;
+      margin-left: 10px;
+    }
+
+    #venueList {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .stand {
+      width: 60px;
+      height: 30px;
+      background-color: gray;
+      color: white;
+      font-size: 12px;
+      text-align: center;
+      line-height: 30px;
+      position: absolute;
+      border: 2px solid #555;
+      cursor: move;
+      user-select: none;
+      box-sizing: border-box;
+      transition: box-shadow 0.3s;
+      overflow: visible;
+      resize: none;
+    }
+
+    .stand.blackstand {
+      background-color: rgb(0, 0, 0);
+    }
+
+    .stand.silverstand {
+      background-color: rgb(132, 132, 132);
+    }
+
+    .stand.selected {
+      border-color: #00f;
+      box-shadow: 0 0 8px #00f;
+    }
+
+    .standcontrols {
+      position: absolute;
+      top: -20px;
+      right: -20px;
+      display: flex;
+      gap: 2px;
+      visibility: hidden;
+    }
+
+    .stand:hover .stnadcontrols {
+      visibility: visible;
+    }
+
+    #standSelector {
+      font-size: 14px;
+      margin-left: 10px;
+    }         
+
+    #controllerSelector {
+      font-size: 14px;
+      margin-left: 10px;
+    }
+    .controller {
+      width: 60px;
+      height: 30px;
+      background-color: gray;
+      color: white;
+      font-size: 12px;
+      text-align: center;
+      line-height: 30px;
+      position: absolute;
+      border: 2px solid #555;
+      cursor: move;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    .controller.selected {
+      border-color: #00f;
+      box-shadow: 0 0 8px #00f;
+    }
+
+    .address-label {
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: yellow;
+      color: black;
+      font-size: 10px;
+      padding: 2px 4px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    .address-label {
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: yellow;
+      color: black;
+      font-size: 10px;
+      padding: 2px 4px;
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 10;
+  }
+
+  /* 編集モードOFFのときはハンドル非表示 */
+.stage-non-edit .resize-handle,
+.stage-non-edit .rotate-handle {
+  display: none !important;
+}
+
+
+
+  </style>
+</head>
+<body>
+
+<div id="venueSelector">
+  <h2>会場を選んでください</h2>
+  <div id="venueList"></div>
+</div>
+
+<div id="stage">
+  <button id="toggleEditBtn">編集モード: ON</button>
+  <select id="fixtureSelector">
+    <option value="STINGERⅡ">STINGERⅡ</option>
+    <option value="SWEEPER BEAM QUAD LED">SWEEPER BEAM QUAD LED</option>
+    <option value="LIGHT BOX">LIGHT BOX</option>
+    <option value="Sunray TRI LED">Sunray TRI LED</option>
+    <option value="Tiny LED">Tiny LED</option>
+    <option value="Inno Spot">Inno Spot</option>
+    <option value="QUADRA Par120 mk-3">QUADRA Par120 mk-3</option>
+    <option value="Dotz Par">Dotz Par</option>
+    <option value="E-PAR56LED mk2">E-PAR56LED mk2</option>
+    <option value="LED PAR64">LED PAR64</option>
+    <option value="CSPOT26">CSPOT26</option>
+  </select>
+
+  <button id="addLightBtn">灯体を追加</button>
+  <button id="backBtn">戻る</button>
+  <button id="connectModeBtn">接続モード: OFF</button>
+
+    <select id="otherSelector">
+      <option value="woodbox">木箱</option>
+      <option value="tutu">筒</option>
+    </select>
+    <button id="addother">その他追加</button>
+
+    <select id="standSelector">
+      <option value="blackstand">黒スタ</option>
+      <option value="silverstand">銀スタ</option>
+    </select>
+    <button id="addstand">スタンド追加</button>
+
+  <select id="controllerSelector">
+    <option value="phantom2048">phantom2048</option>
+    <option value="SEANESETTER">SEANESETTER</option>
+  </select>
+  <button id="addcontroller">コントローラー追加</button>
+
+  
+  <button id="downloadPdfBtn">PDFダウンロード</button>
+
+
+  <!-- 信号線用SVG -->
+  <svg id="signalLines" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+
+<div id="equipmentList" style="position: fixed; right: 10px; bottom: 10px; background: white; padding: 10px; border: 1px solid #ccc; max-height: 200px; overflow-y: auto;">
+  <h3>機材リスト</h3>
+  <ul id="fixtureList"></ul>
+  <ul id="cableList"></ul>
+  <ul id="otherList"></ul>
+  <ul id="standList"></ul>
+  <ul id="controllerList"></ul>
+  <button id="downloadCsvBtn">機材リストCSVダウンロード</button>
+</div>
+
+<div id="faderTable" style="position: fixed; left: 10px; bottom: 10px; background: white; padding: 10px; border: 1px solid #ccc; max-height: 300px; overflow-y: auto;">
+  <h3>フェーダー表</h3>
+  <table id="faderList" border="1" style="border-collapse: collapse;">
+    <thead>
+      <tr><th>名前</th><th>種類</th><th>アドレス</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <button id="downloadFaderCsvBtn">CSVダウンロード</button>
+  <button id="sortFaderBtn">アドレス順に並び替え</button>
+
+
+</div>
+
+
+
+
+
+<script>
+const venues = [
+  { id: "hallA", name: "ホールA", backgroundImage: "images/hallA.png" },
+  { id: "hallB", name: "ホールB", backgroundImage: "images/hallB.png" },
+  { id: "hallC", name: "ホールC", backgroundImage: "images/hallC.png" },
+  { id: "hallD", name: "ホールD", backgroundImage: "images/hallD.png" }
+];
+
+const venueSelector = document.getElementById("venueSelector");
+const venueListDiv = document.getElementById("venueList");
+const stage = document.getElementById("stage");
+const toggleEditBtn = document.getElementById("toggleEditBtn");
+const addLightBtn = document.getElementById("addLightBtn");
+const backBtn = document.getElementById("backBtn");
+const fixtureSelector = document.getElementById("fixtureSelector");
+const signalLinesSVG = document.getElementById("signalLines");
+const connectModeBtn = document.getElementById("connectModeBtn");
+const addOtherBtn = document.getElementById("addother");
+const otherSelector = document.getElementById("otherSelector");
+const addStandBtn = document.getElementById("addstand");
+const standSelector = document.getElementById("standSelector");
+const addControllerBtn = document.getElementById("addcontroller");
+const standController = document.getElementById("controllerSelector");
+
+const selectedOthers = new Set();
+let lastSelectedOther = null;
+const selectedStands = new Set();
+let lastSelectedStand = null;
+const selectedControllers = new Set();
+let lastSelectedController = null;
+
+
+let editMode = true;
+let lightCount = 0;
+let otherCount = 0;
+let standCount = 0;
+let controllerCount = 0;
+
+    venues.forEach(v => {
+      const btn = document.createElement("button");
+      btn.textContent = v.name;
+      btn.onclick = () => {
+        venueSelector.style.display = "none";
+        stage.style.display = "block";
+        stage.style.backgroundImage = `url(${v.backgroundImage})`;
+        addController();
+        addLight();
+      };
+      venueSelector.appendChild(btn);
+    });
+
+
+
+function renderVenueList() {
+  venueListDiv.innerHTML = "";
+  venues.forEach(v => {
+    const btn = document.createElement("button");
+    btn.textContent = v.name;
+    btn.onclick = () => loadVenue(v.id);
+    venueListDiv.appendChild(btn);
+  });
+}
+
+function loadVenue(id) {
+  const venue = venues.find(v => v.id === id);
+  if (!venue) return;
+
+  venueSelector.style.display = "none";
+  stage.style.display = "block";
+  stage.style.backgroundImage = `url('${venue.backgroundImage}')`;
+
+  // 灯体リセット
+  stage.querySelectorAll(".light").forEach(el => el.remove());
+  // 線リセット
+  clearAllSignalLines();
+  // その他リセット
+  stage.querySelectorAll(".other").forEach(el => el.remove());
+  // スタンドリセット
+  stage.querySelectorAll(".stand").forEach(el => el.remove());
+  // コントローラーリセット
+  stage.querySelectorAll(".controller").forEach(el => el.remove());
+
+  lightCount = 0;
+  selectedLights.clear();
+  selectedLines.clear();
+  selectedOthers.clear();
+  selectedControllers.clear();
+  lineConnectMode = false;
+  connectingLights = [];
+  connectingControllers = [];
+  updateLineConnectModeUI();
+}
+
+// ドラッグ可能にする関数
+function makeDraggable(el) {
+  let offsetX = 0, offsetY = 0;
+
+  el.onmousedown = (e) => {
+    if (!editMode) return;
+    // 信号線の接続モード中はドラッグ禁止
+    if(lineConnectMode) return;
+
+    offsetX = e.offsetX;
+    offsetY = e.offsetY;
+
+    const onMouseMove = (e2) => {
+      let newLeft = e2.pageX - stage.offsetLeft - offsetX;
+      let newTop = e2.pageY - stage.offsetTop - offsetY;
+
+      // ステージ内に収める制限
+      newLeft = Math.min(Math.max(0, newLeft), stage.clientWidth - el.offsetWidth);
+      newTop = Math.min(Math.max(0, newTop), stage.clientHeight - el.offsetHeight);
+
+      el.style.left = newLeft + "px";
+      el.style.top = newTop + "px";
+
+      updateLinesForLight(el);
+      updateLinesForController(el);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+}
+
+// 編集モード切替
+toggleEditBtn.onclick = () => {
+  editMode = !editMode;
+  toggleEditBtn.textContent = "編集モード: " + (editMode ? "ON" : "OFF");
+
+  stage.querySelectorAll(".light").forEach(light => {
+    if (editMode) {
+      makeDraggable(light);
+      light.style.borderColor = "#555";
+    } else {
+      light.onmousedown = null;
+      light.style.borderColor = "#aaa";
+    }
+  });
+  
+  stage.querySelectorAll(".other").forEach(other => {
+    if (editMode) {
+      makeDraggable(other);
+      other.style.borderColor = "#555";
+    } else {
+      other.onmousedown = null;
+      other.style.borderColor = "#aaa";
+    }
+  });
+
+  stage.querySelectorAll(".stand").forEach(stand => {
+    if (editMode) {
+      makeDraggable(stand);
+      stand.style.borderColor = "#555";
+    } else {
+      stand.onmousedown = null;
+      stand.style.borderColor = "#aaa";
+    }
+  });
+
+    stage.querySelectorAll(".controller").forEach(controller => {
+      if (editMode) {
+        makeDraggable(controller);
+        controller.style.borderColor = "#555";
+      } else {
+        controller.onmousedown = null;
+        controller.style.borderColor = "#aaa";
+      }
+    });
+
+    // ✅ クラスで見た目を制御
+    if (editMode) {
+      stage.classList.remove("stage-non-edit");
+    } else {
+      stage.classList.add("stage-non-edit");
+    }
+
+  // 信号線接続モードもOFFにする
+  lineConnectMode = false;
+  connectingLights = [];
+  connectingControllers = [];
+  updateLineConnectModeUI();
+
+  
+};
+
+// 灯体追加
+addLightBtn.onclick = () => {
+  lightCount++;
+
+  const selectedType = fixtureSelector.value;
+
+  let classType = "";
+  let displayName = "";
+
+  switch (selectedType) {
+    case "STINGERⅡ":
+      classType = "stinger";
+      displayName = "STINGER2";
+      companyName = "ADJ";
+      break;
+    case "SWEEPER BEAM QUAD LED":
+      classType = "sweeper";
+      displayName = "sweeper";
+      companyName = "ADJ";
+      break;
+    case "LIGHT BOX":
+      classType = "metubusi";
+      displayName = "目潰し";
+      companyName = "I don't know";
+      break;
+    case "Sunray TRI LED":
+      classType = "sunray";
+      displayName = "ミラボ";
+      companyName = "Sunray";
+      break;
+    case "Tiny LED":
+      classType = "tiny";
+      displayName = "tiny";
+      companyName = "I don't know";
+      break;
+    case "Inno Spot":
+      classType = "inno";
+      displayName = "Inno";
+      companyName = "ADJ";
+      break;
+    case "QUADRA Par120 mk-3":
+      classType = "mk3";
+      displayName = "120";
+      companyName = "ADJ";
+      break;
+    case "Dotz Par":
+      classType = "dotz";
+      displayName = "LED";
+      companyName = "ADJ";
+      break;
+    case "E-PAR56LED mk2":
+      classType = "mk2";
+      displayName = "56";
+      companyName = "ADJ";
+      break;
+    case "LED PAR64":
+      classType = "ledpar";
+      displayName = "LEDPAR";
+      companyName = "ADJ";
+      break;
+    case "CSPOT26":
+      classType = "cspot";
+      displayName = "CSPOT";
+      companyName = "ADJ";
+      break;  
+    default:
+      classType = "";
+      displayName = "L";
+  }
+
+  const light = document.createElement("div");
+  light.className = `light ${classType}`;
+  light.textContent = `${displayName}${lightCount}`;
+  light.style.left = "100px";
+  light.style.top = (100 + lightCount * 40) + "px";
+
+  // 制御ボタンは削除機能だけに絞る（他は省略）
+  // ここは既存コードから簡略化しています
+  // もし必要なら追加可能
+  // ここでは信号線追加機能を優先
+
+  stage.appendChild(light);
+
+  // 黒い四角のリサイズハンドルを作成
+const resizeHandle = document.createElement("div");
+resizeHandle.className = "resize-handle";
+light.appendChild(resizeHandle);
+
+let originalAspectRatio = 1;
+
+// リサイズ機能を実装
+let isResizing = false;
+
+resizeHandle.addEventListener("mousedown", (e) => {
+  e.stopPropagation();
+  isResizing = true;
+
+  const rect = light.getBoundingClientRect();
+  originalAspectRatio = rect.width / rect.height;
+});
+document.addEventListener("mousemove", (e) => {
+  if (isResizing) {
+    const rect = light.getBoundingClientRect();
+    let newWidth = e.clientX - rect.left;
+    let newHeight = e.clientY - rect.top;
+
+    // Shiftキーが押されていたら縦横比を固定
+    if (e.shiftKey) {
+      if (newWidth / newHeight > originalAspectRatio) {
+        newWidth = newHeight * originalAspectRatio;
+      } else {
+        newHeight = newWidth / originalAspectRatio;
+      }
+    }
+
+    // 最小サイズを制限（オプションだけどおすすめ）
+    newWidth = Math.max(newWidth, 20);
+    newHeight = Math.max(newHeight, 20);
+
+    light.style.width = newWidth + "px";
+    light.style.height = newHeight + "px";
+  }
+});
+
+document.addEventListener("mouseup", () => {
+  isResizing = false;
+});
+
+  
+
+  makeDraggable(light);
+  if (editMode) makeDraggable(light);
+
+  // クリックイベント追加（選択 + 信号線接続判定）
+  light.addEventListener("click", (e) => {
+    e.stopPropagation();
+    handleLightClick(light, e); // ←既存の選択処理
+    handleControllerClick(light, e); // ←新しく追加
+  });
+  
+
+  const rotateHandle = document.createElement("div");
+  rotateHandle.className = "rotate-handle";
+  light.appendChild(rotateHandle);
+
+let isRotating = false;
+
+rotateHandle.addEventListener("mousedown", (e) => {
+  e.stopPropagation();
+  isRotating = true;
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (isRotating) {
+    const rect = light.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+    const deg = angle * (180 / Math.PI);
+
+    light.style.transform = `rotate(${deg}deg)`;
+    light.dataset.angle = deg; // 保存しておくと便利
+  }
+});
+
+document.addEventListener("mouseup", () => {
+  isRotating = false;
+});
+
+// element.addEventListener("click", ...) ← NG
+light.addEventListener("click", (e) => {
+  e.stopPropagation();
+  handleControllerClick(controller, e); // ←既存の選択処理
+  handleControllerClick(controller, e); // ←新しく追加
+});
+
+addToFaderTable(light, classType, `${displayName}${lightCount}`);
+
+
+// たとえば灯体追加のところの末尾に
+updateEquipmentList();
+};
+
+addOtherBtn.onclick = () => {
+  otherCount++;
+
+  const selectedType = otherSelector.value;
+  let classType = "";
+  let displayName = "";
+
+  switch (selectedType) {
+    case "woodbox":
+      classType = "woodbox";
+      displayName = "木箱";
+      break;
+    case "tutu":
+      classType = "tutu";
+      displayName = "筒";
+      break;
+    default:
+      classType = "";
+      displayName = "L";
+  }
+
+  const other = document.createElement("div");
+  other.className = `other ${classType}`;
+  other.textContent = `${displayName}${otherCount}`;
+  other.style.left = "100px";
+  other.style.top = (100 + otherCount * 40) + "px";
+
+  stage.appendChild(other);
+  makeDraggable(other);
+
+  // ✅ クリックイベント登録（ここが大事！）
+  other.addEventListener("click", (e) => {
+    e.stopPropagation(); // ステージ全体のクリックで選択が解除されないように
+    handleOtherClick(other, e);
+  });
+
+  console.log(`追加：${displayName}${otherCount}`); // ←テンプレート文字列の {} 修正
+
+  updateEquipmentList(); // ココ大事！
+};
+
+
+
+    function handleOtherClick(other, e) {
+      const multiSelect = e.ctrlKey || e.metaKey;
+      const shiftSelect = e.shiftKey;
+
+      const others = Array.from(stage.querySelectorAll(".other"));
+      if (shiftSelect && lastSelectedOther && others.includes(lastSelectedOther)) {
+        const startIndex = others.indexOf(lastSelectedOther);
+        const endIndex = others.indexOf(other);
+        const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+        selectedOthers.forEach(l => l.classList.remove("selected"));
+        selectedOthers.clear();
+
+        for (let i = from; i <= to; i++) {
+          const l = others[i];
+          selectedOthers.add(l);
+          l.classList.add("selected");
+        }
+      } else if (multiSelect) {
+        if (selectedOthers.has(other)) {
+          selectedOthers.delete(other);
+          other.classList.remove("selected");
+        } else {
+          selectedOthers.add(other);
+          other.classList.add("selected");
+        }
+        lastSelectedOther = other;
+      } else {
+        selectedOthers.forEach(l => l.classList.remove("selected"));
+        selectedOthers.clear();
+        selectedOthers.add(other);
+        other.classList.add("selected");
+        lastSelectedOther = other;
+      }
+      // たとえば灯体追加のところの末尾に
+
+    }
+
+    addStandBtn.onclick = () => {
+      standCount++;
+
+      const selectedType = standSelector.value;
+
+      let classType = "";
+      let displayName = "";
+
+      switch (selectedType) {
+        case "blackstand":
+          classType = "blackstand";
+          displayName = "黒スタ";
+          break;
+        case "silverstand":
+          classType = "silverstand";
+          displayName = "銀スタ";
+          break;
+        default:
+          classType = "";
+          displayName = "L";
+      }
+
+      const stand = document.createElement("div");
+      stand.className = `stand ${classType}`;
+      stand.textContent = `${displayName}${standCount}`;
+      stand.style.left = "100px";
+      stand.style.top = (100 + standCount * 40) + "px";
+
+      stand.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleStandClick(stand, e);
+    });
+
+    
+  // 黒い四角のリサイズハンドルを作成
+const resizeHandle = document.createElement("div");
+resizeHandle.className = "resize-handle";
+stand.appendChild(resizeHandle);
+
+let originalAspectRatio = 1;
+
+// リサイズ機能を実装
+let isResizing = false;
+
+resizeHandle.addEventListener("mousedown", (e) => {
+  e.stopPropagation();
+  isResizing = true;
+
+  const rect = stand.getBoundingClientRect();
+  originalAspectRatio = rect.width / rect.height;
+});
+document.addEventListener("mousemove", (e) => {
+  if (isResizing) {
+    const rect = stand.getBoundingClientRect();
+    let newWidth = e.clientX - rect.left;
+    let newHeight = e.clientY - rect.top;
+
+    // Shiftキーが押されていたら縦横比を固定
+    if (e.shiftKey) {
+      if (newWidth / newHeight > originalAspectRatio) {
+        newWidth = newHeight * originalAspectRatio;
+      } else {
+        newHeight = newWidth / originalAspectRatio;
+      }
+    }
+
+    // 最小サイズを制限（オプションだけどおすすめ）
+    newWidth = Math.max(newWidth, 20);
+    newHeight = Math.max(newHeight, 20);
+
+    stand.style.width = newWidth + "px";
+    stand.style.height = newHeight + "px";
+  }
+});
+
+document.addEventListener("mouseup", () => {
+  isResizing = false;
+  isRotating = false;
+});
+
+  const rotateHandle = document.createElement("div");
+rotateHandle.className = "rotate-handle";
+stand.appendChild(rotateHandle);
+
+let isRotating = false;
+
+rotateHandle.addEventListener("mousedown", (e) => {
+  e.stopPropagation();
+  isRotating = true;
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (isRotating) {
+    const rect = stand.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+    const deg = angle * (180 / Math.PI);
+
+    stand.style.transform = `rotate(${deg}deg)`;
+    stand.dataset.angle = deg; // 保存しておくと便利
+  }
+});
+      stage.appendChild(stand);
+      makeDraggable(stand);
+
+      updateEquipmentList();
+
+    };
+
+    function handleStandClick(stand, e) {
+      const multiSelect = e.ctrlKey || e.metaKey;
+      const shiftSelect = e.shiftKey;
+
+      const stands = Array.from(stage.querySelectorAll(".stand"));
+      if (shiftSelect && lastSelectedStand && stands.includes(lastSelectedStand)) {
+        const startIndex = stands.indexOf(lastSelectedStand);
+        const endIndex = stands.indexOf(stand);
+        const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+        selectedStands.forEach(l => l.classList.remove("selected"));
+        selectedStands.clear();
+
+        for (let i = from; i <= to; i++) {
+          const l = stands[i];
+          selectedStands.add(l);
+          l.classList.add("selected");
+        }
+      } else if (multiSelect) {
+        if (selectedStands.has(stand)) {
+          selectedStands.delete(stand);
+          stand.classList.remove("selected");
+        } else {
+          selectedStands.add(stand);
+          stand.classList.add("selected");
+        }
+        lastSelectedStand = stand;
+      } else {
+        selectedStands.forEach(l => l.classList.remove("selected"));
+        selectedStands.clear();
+        selectedStands.add(stand);
+        stand.classList.add("selected");
+        lastSelectedStand = stand;
+      }
+    }
+
+addControllerBtn.onclick = () => {
+  controllerCount++;
+
+  const selectedType = standController.value;
+  let classType = "";
+  let displayName = "";
+
+  switch (selectedType) {
+    case "phantom2048":
+      classType = "phantom2048";
+      displayName = "phantom2048";
+      break;
+    case "SEANESETTER":
+      classType = "SEANESETTER";
+      displayName = "SEANESETTER";
+      break;
+    default:
+      classType = "";
+      displayName = "C";
+  }
+
+  const controller = document.createElement("div");
+  controller.className = `controller ${classType}`;
+  controller.textContent = `${displayName}${controllerCount}`;
+  controller.style.left = "100px";
+  controller.style.top = (100 + controllerCount * 40) + "px";
+  
+      const resizeHandle = document.createElement("div");
+    resizeHandle.className = "resize-handle";
+    controller.appendChild(resizeHandle);
+
+    let originalAspectRatio = 1;
+
+    // リサイズ機能を実装
+    let isResizing = false;
+
+    resizeHandle.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      isResizing = true;
+
+      const rect = controller.getBoundingClientRect();
+      originalAspectRatio = rect.width / rect.height;
+    });
+    document.addEventListener("mousemove", (e) => {
+    if (isResizing) {
+      const rect = controller.getBoundingClientRect();
+      let newWidth = e.clientX - rect.left;
+      let newHeight = e.clientY - rect.top;
+
+    // Shiftキーが押されていたら縦横比を固定
+    if (e.shiftKey) {
+      if (newWidth / newHeight > originalAspectRatio) {
+        newWidth = newHeight * originalAspectRatio;
+      } else {
+        newHeight = newWidth / originalAspectRatio;
+      }
+    }
+
+    // 最小サイズを制限（オプションだけどおすすめ）
+    newWidth = Math.max(newWidth, 20);
+    newHeight = Math.max(newHeight, 20);
+
+    controller.style.width = newWidth + "px";
+    controller.style.height = newHeight + "px";
+  }
+});
+
+document.addEventListener("mouseup", () => {
+  isResizing = false;
+});
+
+  
+
+  makeDraggable(controller);
+  if (editMode) makeDraggable(controller);
+  // ✅ これだけでOK
+  controller.addEventListener("click", (e) => {
+    e.stopPropagation(); // 他のクリックと干渉しないように
+    handleControllerClick(controller, e); // ←既存の選択処理
+    handleConnectableClick(controller, e); // これが選択処理
+  });
+
+  stage.appendChild(controller);
+  makeDraggable(controller); // ← これはドラッグ処理
+
+  // element.addEventListener("click", ...) ← NG
+controller.addEventListener("click", (e) => {
+  e.stopPropagation();
+  handleControllerClick(controller, e);
+});
+
+
+  console.log(`追加：${displayName}${controllerCount}`);
+  updateEquipmentList(); // ← これは装備リスト更新（問題なし）
+};
+
+
+  renderVenueList(); // 初期化
+
+function handleControllerClick(controller, e) {
+  const multiSelect = e.ctrlKey || e.metaKey;
+  const shiftSelect = e.shiftKey;
+
+  if (lineConnectMode) {
+    if (!connectingControllers.includes(controller)) {
+      connectingControllers.push(controller);
+      controller.classList.add("selected");
+    }
+    if (connectingControllers.length === 2) {
+      if (!lineExists(connectingControllers[0], connectingControllers[1])) {
+        addSignalLine(connectingControllers[0], connectingControllers[1]);
+      }
+      connectingControllers.forEach(l => l.classList.remove("selected"));
+      connectingControllers = [];
+    }
+    return;
+  }
+
+  const controllers = Array.from(stage.querySelectorAll(".controller"));
+  if (shiftSelect && lastSelectedController && controllers.includes(lastSelectedController)) {
+    const startIndex = controllers.indexOf(lastSelectedController);
+    const endIndex = controllers.indexOf(controller);
+    const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+    selectedControllers.forEach(l => l.classList.remove("selected"));
+    selectedControllers.clear();
+
+    for (let i = from; i <= to; i++) {
+      const l = controllers[i];
+      selectedControllers.add(l);
+      l.classList.add("selected");
+    }
+  } else if (multiSelect) {
+    if (selectedControllers.has(controller)) {
+      selectedControllers.delete(controller);
+      controller.classList.remove("selected");
+    } else {
+      selectedControllers.add(controller);
+      controller.classList.add("selected");
+    }
+    lastSelectedController = controller;
+  } else {
+    selectedControllers.forEach(l => l.classList.remove("selected"));
+    selectedControllers.clear();
+    selectedControllers.add(controller);
+    controller.classList.add("selected");
+    lastSelectedController = controller;
+  }
+}
+
+
+// 戻るボタン
+backBtn.onclick = () => {
+  stage.style.display = "none";
+  venueSelector.style.display = "block";
+
+  // リセット
+  selectedLights.clear();
+  selectedLines.clear();
+  selectedOthers.clear();
+  selectedStands.clear();
+  lineConnectMode = false;
+  connectingLights = [];
+  updateLineConnectModeUI();
+};
+
+renderVenueList();
+
+let selectedLights = new Set();
+let lastSelectedLight = null;
+
+// 信号線管理用
+let signalLines = [];
+const selectedLines = new Set();
+
+// 接続モード
+let lineConnectMode = false;
+let connectingLights = [];
+let connectingController = [];
+
+// クリック時に灯体選択や線接続を判定
+function handleLightClick(light, e) {
+  const multiSelect = e.ctrlKey || e.metaKey;
+  const shiftSelect = e.shiftKey;
+
+  if (lineConnectMode) {
+    // 接続モード中は2つの灯体を選ぶと線を引く
+    if (!connectingLights.includes(light)) {
+      connectingLights.push(light);
+      light.classList.add("selected");
+    }
+    if (connectingLights.length === 2) {
+      // 既に同じ線があれば引かない
+      if (!lineExists(connectingLights[0], connectingLights[1])) {
+        addSignalLine(connectingLights[0], connectingLights[1]);
+      }
+      // 選択解除・リセット
+      connectingLights.forEach(l => l.classList.remove("selected"));
+      connectingLights = [];
+    }
+    return;
+  }
+
+  // 普通の選択モード
+  const lights = Array.from(stage.querySelectorAll(".light"));
+  if (shiftSelect && lastSelectedLight && lights.includes(lastSelectedLight)) {
+    // 範囲選択
+    const startIndex = lights.indexOf(lastSelectedLight);
+    const endIndex = lights.indexOf(light);
+
+    const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+    selectedLights.forEach(l => l.classList.remove("selected"));
+    selectedLights.clear();
+
+    for (let i = from; i <= to; i++) {
+      const l = lights[i];
+      selectedLights.add(l);
+      l.classList.add("selected");
+    }
+  } else if (multiSelect) {
+    // Ctrl/Cmd 複数選択トグル
+    if (selectedLights.has(light)) {
+      selectedLights.delete(light);
+      light.classList.remove("selected");
+    } else {
+      selectedLights.add(light);
+      light.classList.add("selected");
+    }
+    lastSelectedLight = light;
+  } else {
+    // 単一選択
+    selectedLights.forEach(l => l.classList.remove("selected"));
+    selectedLights.clear();
+    selectedLights.add(light);
+    light.classList.add("selected");
+    lastSelectedLight = light;
+  }
+}
+
+
+// クリック時に灯体選択や線接続を判定
+function handleOtherClick(other, e) {
+  const multiSelect = e.ctrlKey || e.metaKey;
+  const shiftSelect = e.shiftKey;
+
+
+  // 普通の選択モード
+  const others = Array.from(stage.querySelectorAll(".other"));
+  if (shiftSelect && lastSelectedOther && others.includes(lastSelectedOther)) {
+    // 範囲選択
+    const startIndex = others.indexOf(lastSelectedOther);
+    const endIndex = others.indexOf(other);
+
+    const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+    selectedOthers.forEach(l => l.classList.remove("selected"));
+    selectedOthers.clear();
+
+    for (let i = from; i <= to; i++) {
+      const l = others[i];
+      selectedOthers.add(l);
+      l.classList.add("selected");
+    }
+  } else if (multiSelect) {
+    // Ctrl/Cmd 複数選択トグル
+    if (selectedOthers.has(other)) {
+      selectedOthers.delete(other);
+      other.classList.remove("selected");
+    } else {
+      selectedOthers.add(other);
+      other.classList.add("selected");
+    }
+    lastSelectedOther = other;
+  } else {
+    // 単一選択
+    selectedOthers.forEach(l => l.classList.remove("selected"));
+    selectedOthers.clear();
+    selectedOthers.add(other);
+    other.classList.add("selected");
+    lastSelectedOther = other;
+  }
+}
+
+// 空白クリックで選択解除
+stage.addEventListener("click", () => {
+  if (lineConnectMode) return; // 接続モードは解除させない
+  selectedLights.forEach(l => l.classList.remove("selected"));
+  selectedLights.clear();
+  selectedOthers.forEach(l => l.classList.remove("selected"));
+  selectedOthers.clear();
+  selectedStands.forEach(l => l.classList.remove("selected"));
+  selectedStands.clear();
+  selectedControllers.forEach(l => l.classList.remove("selected"));
+  selectedControllers.clear();
+  selectedLines.forEach(line => line.classList.remove("selected"));
+  selectedLines.clear();
+  lastSelectedLight = null;
+  lastSelectedController = null;
+});
+
+// --- 信号線機能 ---
+
+// 線が既にあるかチェック（灯体2つの組み合わせ）
+// 線が既にあるかどうかをチェック
+function lineExists(elem1, elem2) {
+  return signalLines.some(line =>
+    (line.from === elem1 && line.to === elem2) ||
+    (line.from === elem2 && line.to === elem1)
+  );
+}
+
+
+// 線を追加
+function addSignalLine(light1, light2) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  
+  line.classList.add("signal-line");
+  signalLinesSVG.appendChild(line);
+  updateEquipmentList();
+  const signal = { line, from: light1, to: light2 };
+  signalLines.push(signal);
+
+
+  updateSignalLinePosition(signal);
+  
+
+  // 線クリックで選択トグル
+  line.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showCableLengthSelector(line);
+
+    if (selectedLines.has(line)) {
+      selectedLines.delete(line);
+      line.classList.remove("selected");
+    } else {
+      selectedLines.add(line);
+      line.classList.add("selected");
+    }
+  });
+}
+
+function addSignalLine(controller1, controller2) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  
+  line.classList.add("signal-line");
+  signalLinesSVG.appendChild(line);
+  updateEquipmentList();
+  const signal = { line, from: controller1, to: controller2 };
+  signalLines.push(signal);
+
+
+  updateSignalLinePosition(signal);
+  
+
+  // 線クリックで選択トグル
+  line.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showCableLengthSelector(line);
+
+    if (selectedLines.has(line)) {
+      selectedLines.delete(line);
+      line.classList.remove("selected");
+    } else {
+      selectedLines.add(line);
+      line.classList.add("selected");
+    }
+  });
+}
+
+
+// 線の座標を更新
+function updateSignalLinePosition(signal) {
+  const rect1 = signal.from.getBoundingClientRect();
+  const rect2 = signal.to.getBoundingClientRect();
+  const stageRect = stage.getBoundingClientRect();
+
+  const x1 = rect1.left + rect1.width / 2 - stageRect.left;
+  const y1 = rect1.top + rect1.height / 2 - stageRect.top;
+  const x2 = rect2.left + rect2.width / 2 - stageRect.left;
+  const y2 = rect2.top + rect2.height / 2 - stageRect.top;
+
+  const svgRect = signalLinesSVG.getBoundingClientRect();
+  const offsetX = svgRect.left;
+  const offsetY = svgRect.top;
+
+  signal.line.setAttribute("x1", x1);
+  signal.line.setAttribute("y1", y1);
+  signal.line.setAttribute("x2", x2);
+  signal.line.setAttribute("y2", y2);
+
+  signal.line.dataset.x1 = x1;
+  signal.line.dataset.y1 = y1;
+  signal.line.dataset.x2 = x2;
+  signal.line.dataset.y2 = y2;
+}
+
+// 灯体が動いた時の線の更新
+function updateLinesForLight(light) {
+  signalLines.forEach(signal => {
+    if (signal.from === light || signal.to === light) {
+      updateSignalLinePosition(signal);
+    }
+  });
+}
+
+function updateLinesForController(controller) {
+  signalLines.forEach(signal => {
+    if (signal.from === controller || signal.to === controller) {
+      updateSignalLinePosition(signal);
+    }
+  });
+}
+
+// 全ての信号線を削除
+function clearAllSignalLines() {
+  signalLines.forEach(signal => signal.line.remove());
+  signalLines = [];
+  selectedLines.clear();
+}
+
+// 信号線モード切り替えUI（※今回は仮、実装例）
+function updateLineConnectModeUI() {
+  if (lineConnectMode) {
+    toggleEditBtn.style.backgroundColor = "lightyellow";
+    toggleEditBtn.textContent = "編集モード: ON（接続中）";
+  } else {
+    toggleEditBtn.style.backgroundColor = "";
+    toggleEditBtn.textContent = "編集モード: " + (editMode ? "ON" : "OFF");
+  }
+  connectModeBtn.textContent = "接続モード: " + (lineConnectMode ? "ON" : "OFF");
+
+}
+
+connectModeBtn.onclick = () => {
+  if (!editMode) return; // 編集モードでなければ無効
+  lineConnectMode = !lineConnectMode;
+  connectingLights.forEach(l => l.classList.remove("selected"));
+  connectingLights = [];
+  connectingControllers.forEach(l => l.classList.remove("selected"));
+  connectingControllers = [];
+  updateLineConnectModeUI();
+};
+
+
+// 接続モードをONにしたい場合は、ボタン追加して以下を使用:
+// lineConnectMode = true;
+// connectingLights = [];
+// updateLineConnectModeUI();
+
+
+
+// キーボード操作
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Delete" || e.key === "Backspace") {
+    // 選択されている灯体と線を削除
+    selectedLights.forEach(light => {
+      // 関連線も削除
+      signalLines = signalLines.filter(lineObj => {
+        if (lineObj.light1 === light || lineObj.light2 === light) {
+          signalLinesSVG.removeChild(lineObj.line);
+          return false;
+        }
+        return true;
+      });
+
+        // 🔻 フェーダー表の行も削除
+  if (light._faderRow) {
+    light._faderRow.remove();
+  }
+
+      light.remove();
+    });
+    selectedControllers.forEach(controller => {
+      // 関連線も削除
+      signalLines = signalLines.filter(lineObj => {
+        if (lineObj.controller1 === controller2 || lineObj.controller2 === controller1) {
+          signalLinesSVG.removeChild(lineObj.line);
+          return false;
+        }
+        return true;
+      });
+      controller.remove();
+    });
+    selectedOthers.forEach(other => {
+      other.remove();
+    });
+    selectedStands.forEach(stand => {
+      stand.remove();
+    });
+
+    selectedLights.clear();
+    selectedOthers.clear();
+    selectedStands.clear();
+    selectedControllers.clear();
+
+
+    selectedLines.forEach(line => {
+      signalLines = signalLines.filter(lineObj => lineObj.line !== line);
+      signalLinesSVG.removeChild(line);
+    });
+    selectedLines.clear();
+  }
+
+  // Shift + L で信号線接続モードON/OFF切替
+  if (e.shiftKey && (e.key.toLowerCase() === "l")) {
+    lineConnectMode = !lineConnectMode;
+    connectingLights.forEach(l => l.classList.remove("selected"));
+    connectingLights = [];
+    connectingControllers.forEach(l => l.classList.remove("selected"));
+    connectingControllers= [];
+    updateLineConnectModeUI();
+  }
+});
+
+// 信号線接続モードのUI表示切替
+function updateLineConnectModeUI() {
+  if (lineConnectMode) {
+    toggleEditBtn.textContent = "信号線接続モード: ON (Shift+Lで切替)";
+    // 灯体選択クリア
+    selectedLights.forEach(l => l.classList.remove("selected"));
+    selectedLights.clear();
+    selectedControllers.forEach(l => l.classList.remove("selected"));
+    selectedControllers.clear();
+  } else {
+    toggleEditBtn.textContent = "編集モード: " + (editMode ? "ON" : "OFF");
+  }
+  
+}
+
+function showCableLengthLabel(line, text) {
+  const label = document.createElement("div");
+  label.className = "length-label";
+  label.textContent = text;
+
+  label.style.position = "absolute";
+  label.style.background = "white";
+  label.style.border = "1px solid black";
+  label.style.padding = "2px 4px";
+  label.style.borderRadius = "4px";
+  label.style.fontSize = "12px";
+  label.style.pointerEvents = "none";
+  label.style.transform = "translate(-50%, -50%)";
+  label.style.whiteSpace = "nowrap";
+  label.style.zIndex = 1000;
+
+  const x1 = parseFloat(line.dataset.x1);
+  const y1 = parseFloat(line.dataset.y1);
+  const x2 = parseFloat(line.dataset.x2);
+  const y2 = parseFloat(line.dataset.y2);
+
+  if ([x1, y1, x2, y2].some(isNaN)) {
+    console.warn("線の座標が不正です", x1, y1, x2, y2);
+    return;
+  }
+
+  const centerX = (x1 + x2) / 2;
+  const centerY = (y1 + y2) / 2;
+
+  label.style.left = `${centerX}px`;
+  label.style.top = `${centerY}px`;
+
+  document.body.appendChild(label);
+}
+
+
+function showCableLengthSelector(line) {
+  // すでにあるセレクタがあれば消す
+  const existing = document.getElementById("cableLengthSelector");
+  if (existing) existing.remove();
+
+  // 選択UIを作成
+  const selector = document.createElement("select");
+  selector.id = "cableLengthSelector";
+  selector.style.position = "absolute";
+
+  // 信号線の位置を取得してセレクタを置く位置を決める
+  const bbox = line.getBoundingClientRect();
+  selector.style.left = `${bbox.left + window.scrollX}px`;
+  selector.style.top = `${bbox.top + window.scrollY}px`;
+
+  // 選択肢追加
+  [1, 3, 5, 10, 15, 20].forEach(len => {
+    const option = document.createElement("option");
+    option.value = len;
+    option.textContent = `${len}m`;
+    selector.appendChild(option);
+  });
+
+  // 変更時の処理
+  selector.addEventListener("change", () => {
+  const length = selector.value;
+  line.dataset.length = length; // データ属性で保持
+  updateEquipmentList();
+
+  // 既に長さラベルがあれば消す
+  const existingLabel = line.querySelector(".length-label");
+  if (existingLabel) existingLabel.remove();
+
+  // ラベルを作成
+  const label = document.createElement("span");
+  label.className = "length-label";
+  label.textContent = `${length}`;
+  label.style.position = "absolute";
+  label.style.background = "white";
+  label.style.padding = "2px 4px";
+  label.style.border = "1px solid black";
+  label.style.borderRadius = "4px";
+  label.style.fontSize = "12px";
+  label.style.pointerEvents = "none";
+
+  // 信号線の中央に配置
+  const x1 = parseInt(line.dataset.x1);
+  const y1 = parseInt(line.dataset.y1);
+  const x2 = parseInt(line.dataset.x2);
+  const y2 = parseInt(line.dataset.y2);
+  const centerX = (x1 + x2) / 2;
+  const centerY = (y1 + y2) / 2;
+
+  label.style.left = `${centerX}px`;
+  label.style.top = `${centerY}px`;
+
+  // stage 上にラベルを表示
+  stage.appendChild(label);
+
+  // セレクターを消す
+  setTimeout(() => selector.remove(), 100);
+});
+
+  document.body.appendChild(selector);
+}
+
+function setCableLength(line, length) {
+  line.dataset.length = length;
+
+  // ラベルも更新（既にある場合は削除）
+  const oldLabel = document.querySelector(`.length-label[data-line-id="${line.dataset.id}"]`);
+  if (oldLabel) oldLabel.remove();
+
+  showCableLengthLabel(line, `${length}m`);
+  updateEquipmentList();
+}
+
+
+
+function createLight(x, y) {
+  const light = document.createElement('div');
+  light.className = `light`;
+  //light.textContent = type;
+  light.style.left = x + 'px';
+  light.style.top = y + 'px';
+
+  // デフォルトサイズと位置（必要に応じて調整）
+  // light.style.left = '100px';
+  // light.style.top = '100px';
+  // if (!light.style.width) light.style.width = '60px';
+  // if (!light.style.height) light.style.height = '30px';
+
+  // 🔧 リサイズハンドルの追加
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle handle-br';
+  light.appendChild(handle);
+
+  let isResizing = false;
+
+  handle.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      isResizing = true;
+  });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isResizing) {
+        const rect = light.getBoundingClientRect();
+        const stageRect = document.getElementById('stage').getBoundingClientRect();
+        const newWidth = e.clientX - rect.left;
+        const newHeight = e.clientY - rect.top;
+        light.style.width = newWidth + 'px';
+        light.style.height = newHeight + 'px';
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      isResizing = false;
+    });
+
+    document.getElementById('stage').appendChild(controller); // ← controllerに修正
+
+    
+
+  return light;
+}
+
+
+function createStand(x, y) {
+  const stand = document.createElement('div');
+  stand.className = `stand`;
+  //light.textContent = type;
+  stand.style.left = x + 'px';
+  stand.style.top = y + 'px';
+const handle = document.createElement('div');
+handle.className = 'resize-handle handle-br';
+stand.appendChild(handle);
+
+let isResizing = false;
+
+handle.addEventListener('mousedown', (e) => {
+  e.stopPropagation();
+  isResizing = true;
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (isResizing) {
+    const rect = stand.getBoundingClientRect();
+    const stageRect = document.getElementById('stage').getBoundingClientRect();
+    const newWidth = e.clientX - rect.left;
+    const newHeight = e.clientY - rect.top;
+    stand.style.width = newWidth + 'px';
+    stand.style.height = newHeight + 'px';
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  isResizing = false;
+});
+
+    document.getElementById('stage').appendChild(stand);
+    
+
+  return stand;
+}
+
+function createController(x, y) {
+  const controller = document.createElement('div');
+  controller.className = `light`;
+  //light.textContent = type;
+  controller.style.left = x + 'px';
+  controller.style.top = y + 'px';
+
+  // デフォルトサイズと位置（必要に応じて調整）
+  // light.style.left = '100px';
+  // light.style.top = '100px';
+  // if (!light.style.width) light.style.width = '60px';
+  // if (!light.style.height) light.style.height = '30px';
+
+  // 🔧 リサイズハンドルの追加
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle handle-br';
+  controller.appendChild(handle);
+
+  let isResizing = false;
+
+  handle.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      isResizing = true;
+  });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isResizing) {
+        const rect = controller.getBoundingClientRect();
+        const stageRect = document.getElementById('stage').getBoundingClientRect();
+        const newWidth = e.clientX - rect.left;
+        const newHeight = e.clientY - rect.top;
+        controller.style.width = newWidth + 'px';
+        controller.style.height = newHeight + 'px';
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      isResizing = false;
+    });
+
+    document.getElementById('stage').appendChild(fixture);
+    
+
+  return controller;
+}
+
+
+
+
+let currentFixtureCounts = {};
+let currentCableCount = 0;
+let currentOtherCount = {};
+
+function updateEquipmentList() {
+  const fixtureCounts = {};
+  const fixtures = document.querySelectorAll(".light");
+
+  fixtures.forEach(fixture => {
+    const type = fixture.classList[1];
+    fixtureCounts[type] = (fixtureCounts[type] || 0) + 1;
+  });
+
+  currentFixtureCounts = fixtureCounts;
+
+  const fixtureListEl = document.getElementById("fixtureList");
+  fixtureListEl.innerHTML = "";
+
+  for (const type in fixtureCounts) {
+    const li = document.createElement("li");
+    li.textContent = `${type}：${fixtureCounts[type]}台`;
+    fixtureListEl.appendChild(li);
+  }
+
+  const cables = document.querySelectorAll(".signal-line");
+  const cableCountsByLength = {};
+
+  cables.forEach(cable => {
+    const len = cable.dataset.length || "未設定";
+    cableCountsByLength[len] = (cableCountsByLength[len] || 0) + 1;
+  });
+
+  const cableListEl = document.getElementById("cableList");
+  cableListEl.innerHTML = "";
+  for (const len in cableCountsByLength) {
+    const li = document.createElement("li");
+    li.textContent = `信号線 ${len}m：${cableCountsByLength[len]}本`;
+    cableListEl.appendChild(li);
+  }
+
+  const otherCounts = {};
+  const others = document.querySelectorAll(".other");
+
+  others.forEach(other => {
+    const type = other.classList[1] || "その他";
+    otherCounts[type] = (otherCounts[type] || 0) + 1;
+  });
+
+  currentOtherCounts = otherCounts;
+
+  const otherListEl = document.getElementById("otherList");
+  if (otherListEl){
+  otherListEl.innerHTML = "";
+
+  for (const type in otherCounts) {
+    const li = document.createElement("li");
+    li.textContent = `${type}：${otherCounts[type]}個`;
+    otherListEl.appendChild(li);
+  }
+}
+
+const standCounts = {};
+const stands = document.querySelectorAll(".stand");
+
+stands.forEach(stand => {
+  const type = stand.classList[1] || "その他";
+  standCounts[type] = (standCounts[type] || 0) + 1;
+});
+
+currentStandCounts = standCounts;
+
+const standListEl = document.getElementById("standList");
+if (standListEl) {
+  standListEl.innerHTML = "";
+
+  for (const type in standCounts) {
+    const li = document.createElement("li");
+    li.textContent = `${type}：${standCounts[type]}個`;
+    standListEl.appendChild(li);
+  }
+}
+
+const ControllerCounts = {};
+const controllers = document.querySelectorAll(".controller");
+
+controllers.forEach(controller => {
+  const type = controller.classList[1] || "その他";
+  ControllerCounts[type] = (ControllerCounts[type] || 0) + 1;
+});
+
+currentControllerCounts = ControllerCounts;
+
+const controllerListEl = document.getElementById("controllerList");
+if (controllerListEl) {
+  controllerListEl.innerHTML = "";
+
+  for (const type in ControllerCounts) {
+    const li = document.createElement("li");
+    li.textContent = `${type}：${ControllerCounts[type]}個`;
+    controllerListEl.appendChild(li);
+  }
+}
+
+}
+
+const fixtureCompanyMap = {
+  "stinger": "ADJ",
+  "sweeper": "ADJ",
+  "metubusi": "",
+  "sunray": "sunray",
+  "tiny": "tiny",
+  "inno": "ADJ",
+  "mk3": "",
+  "dotz": "ADJ", 
+  "mk2": "",
+  "ledpar": "",
+  "cspot": "",
+};
+
+document.getElementById("downloadCsvBtn").addEventListener("click", () => {
+  const title = "Material List";
+
+  let csv = `${title}\n`
+  csv += "title:\n"
+  csv += "Chief:\n"
+  csv += "種類,会社名,機材名,個数,前チェ,搬入,会場,搬出,後チェ\n";
+
+  csv += `controller`
+  for (const [type, count] of Object.entries(currentControllerCounts)) {
+    const company = fixtureCompanyMap[type] || "不明";
+    csv += ` , ,${type},${count}\n`;
+  }
+  csv += `灯体`
+  for (const [type, count] of Object.entries(currentFixtureCounts)) {
+    const company = fixtureCompanyMap[type] || "不明";
+    csv += ` ,${company},${type},${count}\n`;
+  }
+
+  const cableCounts = {};
+  const cables = document.querySelectorAll(".signal-line");
+  cables.forEach(line => {
+    const length = line.dataset.length || "未設定";
+    cableCounts[length] = (cableCounts[length] || 0) + 1;
+  });
+
+  csv += `\nスタンド`
+  for (const [type, count] of Object.entries(currentStandCounts)) {
+    const company = fixtureCompanyMap[type] || "不明";
+    csv += ` , ,${type},${count}\n`;
+  }
+
+  csv += "\nCable";
+  for (const [length, count] of Object.entries(cableCounts)) {
+    csv += ` ,マイケル${length}m,${count}\n`;
+  }
+  
+  csv += ` , ,電源タップ,適当,\n`;
+  csv += ` , ,電源ケーブル,黒ゴロ,\n`;
+
+  csv += `\nother`
+    for (const [type, count] of Object.entries(currentOtherCounts)) {
+    csv += `, ,${type},${count}\n`;
+  }
+  csv += `, ,ガムテープ, 沢山, \n`;
+  csv += `, ,養生, 沢山, \n`;
+  csv += `, ,白ビニ, 3, \n`;
+  csv += `, ,工具箱, 2,\n`;
+  csv += `, ,チェッカー, 1,\n`;
+
+
+  // BOM付きUTF-8のUint8Arrayを作成
+  const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+  const csvBuffer = new TextEncoder().encode(csv);
+  const blob = new Blob([bom, csvBuffer], { type: "text/csv" });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "機材リスト.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+const fixtureChannelMap = {
+  stinger: 15,
+  sweeper: 8,
+  metubusi: 1,
+  sunray: 3,
+  tiny: 1,
+  inno: 16,
+  mk3: 6,
+  dotz: 6,
+  mk2: 6,
+  ledpar: 3,
+  cspot: 1
+};
+
+const faderListBody = document.querySelector("#faderList tbody");
+
+function addToFaderTable(light, type, name) {
+  const row = document.createElement("tr");
+
+  const nameCell = document.createElement("td");
+  nameCell.textContent = name;
+
+  const typeCell = document.createElement("td");
+  typeCell.textContent = type;
+
+  const addressCell = document.createElement("td");
+  const addressInput = document.createElement("input");
+  addressInput.type = "number";
+  addressInput.style.width = "60px";
+
+  addressInput.addEventListener("change", () => {
+    const baseAddr = parseInt(addressInput.value);
+    if (isNaN(baseAddr)) return;
+
+    light.dataset.address = baseAddr;
+
+    let label = light.querySelector(".address-label");
+    if (!label) {
+      label = document.createElement("div");
+      label.className = "address-label";
+      light.appendChild(label);
+    }
+    label.textContent = baseAddr;
+
+    const ch = fixtureChannelMap[type] || 1;
+    const nextRow = row.nextElementSibling;
+    if (nextRow) {
+      const nextInput = nextRow.querySelector("input");
+      if (nextInput && !nextInput.value) {
+        nextInput.value = baseAddr + ch;
+        nextInput.dispatchEvent(new Event("change"));
+      }
+    }
+  });
+
+  addressCell.appendChild(addressInput);
+  row.appendChild(nameCell);
+  row.appendChild(typeCell);
+  row.appendChild(addressCell);
+  faderListBody.appendChild(row);
+
+  light._faderRow = row;
+}
+
+document.getElementById("downloadFaderCsvBtn").addEventListener("click", () => {
+  const rows = Array.from(document.querySelectorAll("#faderList tbody tr"));
+  let csv = "名前,種類,アドレス\n";
+
+  rows.forEach(row => {
+    const name = row.cells[0].textContent.trim();
+    const type = row.cells[1].textContent.trim();
+    const addr = row.cells[2].querySelector("input").value.trim();
+    csv += `${name},${type},${addr}\n`;
+  });
+
+  // BOM付きUTF-8（Excel対策）
+  const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+  const csvBuffer = new TextEncoder().encode(csv);
+  const blob = new Blob([bom, csvBuffer], { type: "text/csv" });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "フェーダー表.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+
+
+document.getElementById("downloadPdfBtn").addEventListener("click", () => {
+  const originalStage = document.getElementById("stage");
+
+  // ステージのクローンを作成
+  const clone = originalStage.cloneNode(true);
+
+  // 不要なUI要素を削除（ボタン類など）
+  clone.querySelectorAll("button, select").forEach(el => el.remove());
+
+  // スタイルを保持して画面外に配置（表示されないが描画はされる）
+  clone.style.position = "absolute";
+  clone.style.left = "-9999px";
+  clone.style.top = "0";
+  clone.style.display = "block"; // 非表示だと描画できない
+
+  document.body.appendChild(clone);
+
+  html2canvas(clone, {
+    backgroundColor: null,
+    useCORS: true,
+    scale: 2
+  }).then(canvas => {
+    const imgData = canvas.toDataURL("image/png");
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+      orientation: "landscape",
+      unit: "px",
+      format: [canvas.width, canvas.height]
+    });
+
+    pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
+    pdf.save("照明図.pdf");
+
+    // クローン削除
+    document.body.removeChild(clone);
+  });
+});
+
+
+
+
+
+
+// 初期化時UI
+updateLineConnectModeUI();
+
+</script>
+</body>
+</html>

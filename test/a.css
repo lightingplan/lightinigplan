@@ -1,0 +1,54 @@
+body {
+  margin: 0;
+  font-family: sans-serif;
+}
+
+.toolbar {
+  display: flex;
+  padding: 10px;
+  background-color: #333;
+  color: white;
+  gap: 10px;
+}
+
+button {
+  padding: 10px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+#canvas {
+  width: 100vw;
+  height: 90vh;
+  position: relative;
+  background-color: #f0f0f0;
+  overflow: hidden;
+}
+
+.element {
+  width: 60px;
+  height: 60px;
+  position: absolute;
+  text-align: center;
+  line-height: 60px;
+  color: white;
+  font-weight: bold;
+  cursor: move;
+  border-radius: 8px;
+}
+
+.light {
+  background-color: orange;
+}
+
+.stand {
+  background-color: blue;
+}
+
+.connection-line {
+  position: absolute;
+  width: 2px;
+  background-color: black;
+  transform-origin: top left;
+  z-index: 0;
+}
