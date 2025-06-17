@@ -2,6 +2,9 @@
 <html lang="ja">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
 
 <head>
   <meta charset="UTF-8" />
@@ -443,12 +446,15 @@
 
 <div id="equipmentList" style="position: fixed; right: 10px; bottom: 10px; background: white; padding: 10px; border: 1px solid #ccc; max-height: 200px; overflow-y: auto;">
   <h3>機材リスト</h3>
-  <ul id="fixtureList"></ul>
-  <ul id="cableList"></ul>
-  <ul id="otherList"></ul>
-  <ul id="standList"></ul>
-  <ul id="controllerList"></ul>
+
+    <ul id="fixtureList"></ul>
+    <ul id="cableList"></ul>
+    <ul id="otherList"></ul>
+    <ul id="standList"></ul>
+    <ul id="controllerList"></ul>
+
   <button id="downloadCsvBtn">機材リストCSVダウンロード</button>
+    <button id="downloadExcel">罫線付きExcelをダウンロード</button>
 </div>
 
 <div id="faderTable" style="position: fixed; left: 10px; bottom: 10px; background: white; padding: 10px; border: 1px solid #ccc; max-height: 300px; overflow-y: auto;">
@@ -462,6 +468,7 @@
   <button id="downloadFaderCsvBtn">CSVダウンロード</button>
   <button id="sortFaderBtn">アドレス順に並び替え</button>
 
+  
 
 </div>
 
@@ -2168,6 +2175,148 @@ document.getElementById("downloadPdfBtn").addEventListener("click", () => {
 });
 
 
+// 修正：灯体・ケーブル・スタンド・その他をExcel出力で罫線付きに反映
+
+// 該当部分だけ差し替え（既存の downloadExcel リスナーを上書き）
+document.getElementById("downloadExcel").addEventListener("click", async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("機材リスト");
+
+
+
+  const rows = [];
+  rows.push(["Material List"]);
+  rows.push(["title:"]);
+  rows.push(["Chief:"]);
+  rows.push(["種類", "会社名", "機材名", "個数", "前チェ", "搬入", "会場", "搬出", "後チェ"]);
+
+  const tableStartIndex = rows.findIndex(row => row[0] === "種類");
+
+  const borderStyle = {
+    top: { style: 'thin' },
+    bottom: { style: 'thin' },
+    left: { style: 'thin' },
+    right: { style: 'thin' }
+  };
+
+
+  const bottomBorderOnly = {
+    bottom: { style: 'thin' }
+  };
+
+  const thick_Bordder = {
+    top: { style: 'medium' },
+    bottom: { style: 'medium' }, 
+    left: { style: 'medium' },
+    right: { style: 'medium' }
+  }
+
+
+ 
+
+  // コントローラー
+  rows.push(["controller","","","","","","","",""]);
+  for (const [type, count] of Object.entries(currentControllerCounts)) {
+    const company = fixtureCompanyMap[type] || "不明";
+    rows.push(["", "", type, count,"","","","",""]);
+  }
+
+  // 灯体
+  rows.push(["灯体","","","","","","","",""]);
+  for (const [type, count] of Object.entries(currentFixtureCounts)) {
+    const company = fixtureCompanyMap[type] || "不明";
+    rows.push(["", company, type, count,"","","","",""]);
+  }
+
+  // スタンド
+  rows.push(["スタンド","","","","","","","",""]);
+  for (const [type, count] of Object.entries(currentStandCounts)) {
+    const company = fixtureCompanyMap[type] || "不明";
+    rows.push(["", "", type, count,"","","","","",]);
+  }
+
+  // ケーブル
+  const cableCounts = {};
+  const cables = document.querySelectorAll(".signal-line");
+  cables.forEach(line => {
+    const length = line.dataset.length || "未設定";
+    cableCounts[length] = (cableCounts[length] || 0) + 1;
+  });
+
+  rows.push(["Cable","","","","","","","",""]);
+  for (const [length, count] of Object.entries(cableCounts)) {
+    rows.push(["", `マイケル${length}m`, "", count,"","","","",""]);
+  }
+  rows.push(["", "", "電源タップ", "適当","","","","",""]);
+  rows.push(["", "", "電源ケーブル", "黒ゴロ","","","","",""]);
+
+  // その他
+  rows.push(["other","","","","","","","",""]);
+  for (const [type, count] of Object.entries(currentOtherCounts)) {
+    rows.push(["", "", type, count,"","","","",""]);
+  }
+  rows.push(["", "", "ガムテープ", "沢山","","","","",""]);
+  rows.push(["", "", "養生", "沢山","","","","",""]);
+  rows.push(["", "", "白ビニ", 3,"","","","",""]);
+  rows.push(["", "", "工具箱", 2,"","","","",""]);
+  rows.push(["", "", "チェッカー", 1,"","","","",""]);
+
+  const tableEndIndex = rows.length - 1;
+
+// Excelに行追加＋罫線適用
+rows.forEach((rowData, rowIndex) => {
+  const row = sheet.addRow(rowData);
+
+  row.eachCell((cell, colNumber) => {
+    let border = {
+      top: { style: 'thin' },
+      bottom: { style: 'thin' },
+      left: { style: 'thin' },
+      right: { style: 'medium' }
+    };
+
+    // 最初の3行 → 下線だけ
+    if (rowIndex <= 2) {
+      border = bottomBorderOnly;
+    } else if (rowIndex <= 3){
+      border = thick_Bordder;
+    } else if (rowIndex === tableStartIndex) {
+      border = {
+        top: { style: 'medium' },
+        bottom: { style: 'thin' },
+        left: (colNumber === 1) ? { style: 'medium' } : { style: 'thin' },
+        right: (colNumber === rowData.length) ? { style: 'medium' } : { style: 'thin' }
+      };
+
+    // 表の中間行 → 外枠だけ太線
+    } else if (rowIndex > tableStartIndex && rowIndex < tableEndIndex) {
+      border = {
+        top: { style: 'thin' },
+        bottom: { style: 'thin' },
+        left: (colNumber === 1) ? { style: 'medium' } : { style: 'thin' },
+        right: (colNumber === rowData.length) ? { style: 'medium' } : { style: 'thin' }
+      };
+
+    // 表の最終行 → 下と左右を太線に
+    } else if (rowIndex === tableEndIndex) {
+      border = {
+        top: { style: 'thin' },
+        bottom: { style: 'medium' },
+        left: (colNumber === 1) ? { style: 'medium' } : { style: 'thin' },
+        right: (colNumber === rowData.length) ? { style: 'medium' } : { style: 'thin' }
+      };
+    }
+
+    cell.border = border;
+  });
+});
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+  saveAs(blob, "機材リスト_罫線付き.xlsx");
+});
 
 
 
