@@ -180,6 +180,8 @@
       height: 600px;
       z-index: 0; /* stageより前面 */
     }
+
+
     line.signal-line {
       stroke: orange;
       stroke-width: 3;
@@ -390,6 +392,11 @@
 .stage-non-edit .rotate-handle {
   display: none !important;
 }
+line.signal-line.selected,
+polyline.selected {
+  stroke: deepskyblue;
+  stroke-width: 5;
+}
 
 
 
@@ -444,7 +451,8 @@
   <button id="downloadPdfBtn">PDFダウンロード</button>
 
 
-  <!-- 信号線用SVG -->
+  <!-- 修正開始：信号線管理強化 -->
+<!-- 信号線用SVG -->
   <svg id="signalLines" xmlns="http://www.w3.org/2000/svg"></svg>
 </div>
 
@@ -669,10 +677,10 @@ toggleEditBtn.onclick = () => {
 };
 
 // polyline（信号線）を更新するための関数（中間点などを反映）
-  function updatePolyline(polyline, points) {
-    polyline.setAttribute("points", points.map(p => `${p.x},${p.y}`).join(" "));
-    polyline.dataset.points = JSON.stringify(points);
-  }
+function updatePolyline(polyline, points) {
+  polyline.setAttribute("points", points.map(p => `${p.x},${p.y}`).join(" "));
+}
+
 
 
 // 灯体追加
@@ -799,6 +807,7 @@ document.addEventListener("mousemove", (e) => {
   }
 });
 
+// 修正: 信号線も追従させるように変更済み
 document.addEventListener("mouseup", () => {
   isResizing = false;
 });
@@ -841,6 +850,7 @@ document.addEventListener("mousemove", (e) => {
   }
 });
 
+// 修正: 信号線も追従させるように変更済み
 document.addEventListener("mouseup", () => {
   isRotating = false;
 });
@@ -854,10 +864,11 @@ light.addEventListener("click", (e) => {
 
 addToFaderTable(light, classType, `${displayName}${lightCount}`);
 
-addBentSignalLine(controller, light);// 曲がりのある信号線を追加
+//addBentSignalLine(controller, light);// 曲がりのある信号線を追加
+lineExists();
 
 // たとえば灯体追加のところの末尾に
-updateEquipmentList()
+updateEquipmentList();
 };
 
 
@@ -1018,6 +1029,7 @@ document.addEventListener("mousemove", (e) => {
   }
 });
 
+// 修正: 信号線も追従させるように変更済み
 document.addEventListener("mouseup", () => {
   isResizing = false;
   isRotating = false;
@@ -1157,6 +1169,7 @@ addControllerBtn.onclick = () => {
   }
 });
 
+// 修正: 信号線も追従させるように変更済み
 document.addEventListener("mouseup", () => {
   isResizing = false;
 });
@@ -1413,12 +1426,22 @@ function lineExists(elem1, elem2) {
 
     // コントローラーと灯体を結ぶ曲げ可能なpolyline信号線を追加
     function addBentSignalLine(fromEl, toEl) {
+        // すでに同じ線が存在するかチェック
+      if (signalLines.some(line => 
+          (line.from === fromEl && line.to === toEl) || 
+          (line.from === toEl && line.to === fromEl))) {
+        return; // 重複を防ぐ
+      }
     
       const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
       polyline.setAttribute("stroke", "orange");
       polyline.setAttribute("stroke-width", "3");
       polyline.setAttribute("fill", "none");
       polyline.style.pointerEvents = "visiblePainted"; // クリック可能にする
+
+      polyline.addEventListener("click", () => {
+  showCableLengthSelector(polyline); // ← 選択肢を出して dataset.length を設定する関数
+});
 
       const from = getCenter(fromEl);
       const to = getCenter(toEl);
@@ -1449,8 +1472,32 @@ function lineExists(elem1, elem2) {
       for (let i = 1; i < points.length - 1; i++) {
         addBendHandle(polyline, points, i);
       }
+
+      polyline.addEventListener("click", (e) => {
+  e.stopPropagation(); // 他のクリックとバッティングしないように
+  // すでに選択されていれば解除、それ以外は選択
+  if (selectedLines.has(polyline)) {
+    selectedLines.delete(polyline);
+    polyline.classList.remove("selected");
+  } else {
+    selectedLines.add(polyline);
+    polyline.classList.add("selected");
+  }
+
+  polyline.classList.add("signal-line");
+
+});
+
   });
-  updateEquipmentList()
+
+  // signalLines に登録しておく
+signalLines.push({
+  from: fromEl,
+  to: toEl,
+  polyline: polyline
+});
+updateEquipmentList();
+
   }
 
 // points属性とデータ更新
@@ -1474,32 +1521,43 @@ function addBendHandle(polyline, points, index) {
   handle.setAttribute("cx", pt.x);
   handle.setAttribute("cy", pt.y);
   handle.style.cursor = "move";
-  signalLinesSVG.appendChild(handle);
-
-  let isDragging = false;
 
   handle.dataset.index = index;
-  handle.classList.add("bend-handle"); // 複数ハンドル識別用
-  handle.polyline = polyline;
+  handle.classList.add("bend-handle");
+  handle.polyline = polyline; // 紐づけ大事
 
-  handle.addEventListener("mousedown", () => isDragging = true);
-  document.addEventListener("mousemove", (e) => {
-    if (!isDragging) return;
-    pt.x = e.offsetX;
-    pt.y = e.offsetY;
-    handle.setAttribute("cx", pt.x);
-    handle.setAttribute("cy", pt.y);
-    updatePolyline(polyline, points);
+  // 👇 ハンドル押下でドラッグ状態に
+  handle.addEventListener("mousedown", (e) => {
+    e.stopPropagation(); // 他のクリックイベントと干渉しないように
+
+    const onMouseMove = (e) => {
+      const stageRect = stage.getBoundingClientRect();
+      const x = e.clientX - stageRect.left;
+      const y = e.clientY - stageRect.top;
+
+      handle.setAttribute("cx", x);
+      handle.setAttribute("cy", y);
+
+      // 中間点の位置を更新
+      const points = JSON.parse(polyline.dataset.points);
+      points[index] = { x, y };
+      polyline.dataset.points = JSON.stringify(points);
+      updatePolyline(polyline, points);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
   });
-      signalLinesSVG.appendChild(handle);
-  document.addEventListener("mouseup", () => isDragging = false);
+
+  signalLinesSVG.appendChild(handle);
 }
+
  // --- ハンドルのドラッグ処理（マウスで動かせるように） ---
-
-// ドラッグ中かどうかの状態を保持する変数
-let isDragging = false;
-let dragHandle = null;
-
 
 // マウス押下時にドラッグ対象を確認
 signalLinesSVG.addEventListener("mousedown", (e) => {
@@ -1537,6 +1595,7 @@ document.addEventListener("mousemove", (e) => {
 });
 
 // マウスを離したときにドラッグ終了
+// 修正: 信号線も追従させるように変更済み
 document.addEventListener("mouseup", () => {
   isDragging = false;
   dragHandle = null;
@@ -1562,28 +1621,53 @@ function updateSignalLinePosition(signal) {
   signal.line.setAttribute("x2", x2);
   signal.line.setAttribute("y2", y2);
 
-  signal.line.dataset.x1 = x1;
-  signal.line.dataset.y1 = y1;
-  signal.line.dataset.x2 = x2;
-  signal.line.dataset.y2 = y2;
+const points = JSON.parse(line.dataset.points);
+let sumX = 0, sumY = 0;
+points.forEach(p => {
+  sumX += p.x;
+  sumY += p.y;
+});
+const centerX = sumX / points.length;
+const centerY = sumY / points.length;
+
+label.style.left = `${centerX}px`;
+label.style.top = `${centerY - 10}px`; // ちょっと上にずらすと見やすい
+
 }
 
 // 灯体が動いた時の線の更新
 function updateLinesForLight(light) {
   signalLines.forEach(signal => {
     if (signal.from === light || signal.to === light) {
-      addBentSignalLine(fromEl, toEl);
+      const from = getCenter(signal.from);
+      const to = getCenter(signal.to);
+      const points = JSON.parse(signal.polyline.dataset.points);
+
+      // 端点を更新（曲げ点を除いて先頭・末尾だけ更新）
+      points[0] = from;
+      points[points.length - 1] = to;
+
+      updatePolyline(signal.polyline, points);
     }
   });
 }
 
+
 function updateLinesForController(controller) {
   signalLines.forEach(signal => {
     if (signal.from === controller || signal.to === controller) {
-      addBentSignalLine(fromEl, toEl);
+      const from = getCenter(signal.from);
+      const to = getCenter(signal.to);
+      const points = JSON.parse(signal.polyline.dataset.points);
+
+      points[0] = from;
+      points[points.length - 1] = to;
+
+      updatePolyline(signal.polyline, points);
     }
   });
 }
+
 
 // 全ての信号線を削除
 function clearAllSignalLines() {
@@ -1661,7 +1745,30 @@ document.addEventListener("keydown", (e) => {
     selectedStands.forEach(stand => {
       stand.remove();
     });
+    selectedLines.forEach(line => {
+  signalLines = signalLines.filter(lineObj => lineObj.polyline !== line);
+  line.remove();
+});
+selectedLines.forEach(line => {
+  // 関連するハンドルも削除
+  const handles = signalLinesSVG.querySelectorAll(".bend-handle");
+  handles.forEach(h => {
+    if (h.polyline === line) {
+      h.remove();
+    }
+  });
 
+  // 登録されてる配列から除去
+  signalLines = signalLines.filter(lineObj => lineObj.polyline !== line);
+
+  // polyline自体を削除
+  line.remove();
+});
+
+
+    
+
+    selectedLines.clear();
     selectedLights.clear();
     selectedOthers.clear();
     selectedStands.clear();
@@ -1740,7 +1847,9 @@ function showCableLengthLabel(line, text) {
 function showCableLengthSelector(line) {
   // すでにあるセレクタがあれば消す
   const existing = document.getElementById("cableLengthSelector");
-  if (existing) existing.remove();
+  if (existing) {
+    existing.remove(); // ← これが「既存セレクタを削除する」処理！
+  }
 
   // 選択UIを作成
   const selector = document.createElement("select");
@@ -1748,9 +1857,13 @@ function showCableLengthSelector(line) {
   selector.style.position = "absolute";
 
   // 信号線の位置を取得してセレクタを置く位置を決める
-  const bbox = line.getBoundingClientRect();
-  selector.style.left = `${bbox.left + window.scrollX}px`;
-  selector.style.top = `${bbox.top + window.scrollY}px`;
+const bbox = line.getBoundingClientRect();
+const centerX = bbox.left + bbox.width / 2 + window.scrollX;
+const centerY = bbox.top + bbox.height / 2 + window.scrollY;
+
+selector.style.left = `${centerX}px`;
+selector.style.top = `${centerY - 10}px`; // 10px 上にずらす（好みで調整）
+
 
   // 選択肢追加
   [1, 3, 5, 10, 15, 20].forEach(len => {
@@ -1800,7 +1913,8 @@ function showCableLengthSelector(line) {
   setTimeout(() => selector.remove(), 100);
 });
 
-  document.body.appendChild(selector);
+  stage.appendChild(selector); // ← セレクタを舞台の上に出す
+
 }
 
 function setCableLength(line, length) {

@@ -1,100 +1,237 @@
-<!-- ExcelJS & FileSaver.js を先に読み込む -->
-<script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-
-<script>
-  // 仮データ（本番では currentXXX を使う）
-  const currentControllerCounts = { phantom2048: 2, SEANESETTER: 1 };
-  const currentFixtureCounts = { stinger: 4, sunray: 2 };
-  const currentStandCounts = { blackstand: 3 };
-  const currentOtherCounts = { woodbox: 1, tutu: 2 };
-  const fixtureCompanyMap = {
-    stinger: "ADJ",
-    sunray: "Sunray",
-    phantom2048: "ADJ",
-    SEANESETTER: "ADJ",
-    blackstand: "",
-    woodbox: "",
-    tutu: ""
-  };
-
-  const cableCounts = { "10": 5, "未設定": 2 };
-
-  // ボタン作成
-  const excelBtn = document.createElement("button");
-  excelBtn.textContent = "罫線付きExcel出力（データ反映版）";
-  document.body.appendChild(excelBtn);
-
-  excelBtn.addEventListener("click", async () => {
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("機材リスト");
-
-    const borderStyle = {
-      top: { style: 'thin' },
-      bottom: { style: 'thin' },
-      left: { style: 'thin' },
-      right: { style: 'thin' }
-    };
-
-    // ヘッダー行
-    const rows = [];
-    rows.push(["Material List"]);
-    rows.push(["title:"]);
-    rows.push(["Chief:"]);
-    rows.push(["種類", "会社名", "機材名", "個数", "前チェ", "搬入", "会場", "搬出", "後チェ"]);
-
-    // Controller
-    rows.push(["controller"]);
-    for (const [type, count] of Object.entries(currentControllerCounts)) {
-      const company = fixtureCompanyMap[type] || "不明";
-      rows.push(["", "", type, count]);
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>照明図作成</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; }
+    #venueSelector, #venueList { text-align: center; margin: 20px; }
+    #stage {
+      position: relative;
+      width: 800px;
+      height: 600px;
+      border: 1px solid #ccc;
+      margin: 0 auto;
+      background-size: cover;
+      display: none;
+    }
+    .light, .controller {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background-color: #f90;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 40px;
+      cursor: pointer;
+    }
+    #signalLines {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 0;
     }
 
-    // 灯体
-    rows.push(["灯体"]);
-    for (const [type, count] of Object.entries(currentFixtureCounts)) {
-      const company = fixtureCompanyMap[type] || "不明";
-      rows.push(["", company, type, count]);
+    .bend-handle {
+  pointer-events: auto;
+}
+  </style>
+</head>
+<body>
+  <div id="venueSelector">
+    <div id="venueList"></div>
+  </div>
+
+  <div id="stage">
+    <svg id="signalLines" width="800" height="600" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <script>
+    // 会場リストと背景画像を定義（ボタンで選べるようにする）
+    const venueList = [
+      { name: "会場A", backgroundImage: "images/venue-a.png" },
+      { name: "会場B", backgroundImage: "images/venue-b.png" }
+    ];
+
+    // DOM要素の取得
+    const venueListDiv = document.getElementById("venueList");
+    const stage = document.getElementById("stage");
+    const signalLinesSVG = document.getElementById("signalLines");
+
+    // SVGのサイズをステージに合わせて更新する関数
+    function updateSvgSize() {
+      const stageRect = stage.getBoundingClientRect();
+      signalLinesSVG.setAttribute("width", stageRect.width);
+      signalLinesSVG.setAttribute("height", stageRect.height);
     }
 
-    // スタンド
-    rows.push(["スタンド"]);
-    for (const [type, count] of Object.entries(currentStandCounts)) {
-      rows.push(["", "", type, count]);
+    // polyline（信号線）を更新するための関数（中間点などを反映）
+    function updatePolyline(polyline, points) {
+      polyline.setAttribute("points", points.map(p => `${p.x},${p.y}`).join(" "));
+      polyline.dataset.points = JSON.stringify(points);
     }
 
-    // ケーブル
-    rows.push(["Cable"]);
-    for (const [len, count] of Object.entries(cableCounts)) {
-      rows.push(["", "マイケル" + len + "m", "", count]);
-    }
-    rows.push(["", "", "電源タップ", "適当"]);
-    rows.push(["", "", "電源ケーブル", "黒ゴロ"]);
-
-    // その他
-    rows.push(["other"]);
-    for (const [type, count] of Object.entries(currentOtherCounts)) {
-      rows.push(["", "", type, count]);
-    }
-    rows.push(["", "", "ガムテープ", "沢山"]);
-    rows.push(["", "", "養生", "沢山"]);
-    rows.push(["", "", "白ビニ", "3"]);
-    rows.push(["", "", "工具箱", "2"]);
-    rows.push(["", "", "チェッカー", "1"]);
-
-    // 行を追加しつつ罫線を適用
-    rows.forEach(rowData => {
-      const row = sheet.addRow(rowData);
-      row.eachCell(cell => {
-        cell.border = borderStyle;
-      });
+    // 会場選択ボタンを生成・クリック時の処理を設定
+    venueList.forEach(v => {
+      const btn = document.createElement("button");
+      btn.textContent = v.name;
+      btn.onclick = () => {
+        venueSelector.style.display = "none";  // セレクター非表示
+        stage.style.display = "block";          // ステージ表示
+        stage.style.backgroundImage = `url(${v.backgroundImage})`;// 背景画像を設定
+        updateSvgSize();// SVGサイズ更新
+        addController();// コントローラー追加
+        addLight();// 灯体追加（信号線付き）
+      };
+      venueListDiv.appendChild(btn);
     });
 
-    // 保存
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    });
-    saveAs(blob, "機材リスト_罫線付き.xlsx");
+    // コントローラーをステージに追加する関数
+    function addController() {
+      const controller = document.createElement("div");
+      controller.className = "controller";
+      controller.style.left = "50px";
+      controller.style.top = "100px";
+      controller.textContent = "C";
+      stage.appendChild(controller);
+    }
+
+    // 灯体を追加し、コントローラーとの信号線も引く
+    function addLight() {
+      const light = document.createElement("div");
+      light.className = "light";
+      light.style.left = "600px";
+      light.style.top = "400px";
+      light.textContent = "L";
+      stage.appendChild(light);
+
+      const controller = document.querySelector(".controller");
+      addBentSignalLine(controller, light);// 曲がりのある信号線を追加
+    }
+
+    // 要素の中央座標を取得する関数（ステージ基準の相対座標）
+    function getCenter(el) {
+      const rect = el.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2 - stageRect.left,
+        y: rect.top + rect.height / 2 - stageRect.top
+      };
+    }
+
+    // コントローラーと灯体を結ぶ曲げ可能なpolyline信号線を追加
+    function addBentSignalLine(fromEl, toEl) {
+      const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      polyline.setAttribute("stroke", "orange");
+      polyline.setAttribute("stroke-width", "3");
+      polyline.setAttribute("fill", "none");
+      polyline.style.pointerEvents = "visiblePainted"; // クリック可能にする
+
+      const from = getCenter(fromEl);
+      const to = getCenter(toEl);
+      const points = [from, to]; // 初期状態では直線
+
+      polyline.dataset.points = JSON.stringify(points);
+      polyline.setAttribute("points", points.map(p => `${p.x},${p.y}`).join(" "));
+
+      signalLinesSVG.appendChild(polyline);
+
+      // 線をクリックしたら中間に曲げ点を追加してハンドルを出す
+    polyline.addEventListener("click", (e) => {
+      e.stopPropagation(); // 他のイベントを止める
+
+      // SVG座標に変換
+      const svgPoint = signalLinesSVG.createSVGPoint();
+      svgPoint.x = e.clientX;
+      svgPoint.y = e.clientY;
+      const pt = svgPoint.matrixTransform(signalLinesSVG.getScreenCTM().inverse());
+      
+      // 2点間の中央に追加
+      points.splice(1, 0, { x: pt.x, y: pt.y });
+      updatePolyline(polyline, points);
+
+      clearBendHandles();// 古いハンドルを削除
+
+      // すべての曲げ点にハンドルを再作成（1〜length-2まで）
+      for (let i = 1; i < points.length - 1; i++) {
+        addBendHandle(polyline, points, i);
+      }
   });
-</script>
+  }
+  // 既存の全ての曲げハンドルを削除
+  function clearBendHandles() {
+    const handles = signalLinesSVG.querySelectorAll(".bend-handle");
+    handles.forEach(h => h.remove());
+  }
+
+// 曲げハンドル（ドラッグ可能な円）を作成してSVGに追加
+  function addBendHandle(polyline, points, index) {
+    const pt = points[index];
+    const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    handle.setAttribute("r", "6");
+    handle.setAttribute("fill", "deepskyblue");
+    handle.setAttribute("cx", pt.x);
+    handle.setAttribute("cy", pt.y);
+    handle.style.cursor = "move";
+
+    handle.dataset.index = index;
+    handle.classList.add("bend-handle"); // 複数ハンドル識別用
+
+      handle.polyline = polyline;
+    // ハンドル上のドラッグ状態はグローバルで管理
+    
+    signalLinesSVG.appendChild(handle);
+  }
+
+  // --- ハンドルのドラッグ処理（マウスで動かせるように） ---
+
+// ドラッグ中かどうかの状態を保持する変数
+let isDragging = false;
+let dragHandle = null;
+
+
+// マウス押下時にドラッグ対象を確認
+signalLinesSVG.addEventListener("mousedown", (e) => {
+  if (e.target.classList.contains("bend-handle")) {
+    isDragging = true;
+    dragHandle = e.target;
+  }
+});
+
+// マウス移動時にハンドルを動かし、線を更新
+document.addEventListener("mousemove", (e) => {
+  if (!isDragging || !dragHandle) return;
+
+  const svg = signalLinesSVG;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+  const index = Number(dragHandle.dataset.index);
+
+  // pointsは{x, y}のオブジェクト配列として統一
+  const polyline = dragHandle.polyline; // 紐づいたpolylineを取得// ハンドルの直前のpolylineを想定
+  let points = JSON.parse(polyline.dataset.points);
+
+    // 移動した位置を反映
+  points[index] = { x: svgP.x, y: svgP.y };
+
+  // 更新
+  updatePolyline(polyline, points);
+  dragHandle.setAttribute("cx", svgP.x);
+  dragHandle.setAttribute("cy", svgP.y);
+
+  polyline.dataset.points = JSON.stringify(points);
+});
+
+// マウスを離したときにドラッグ終了
+document.addEventListener("mouseup", () => {
+  isDragging = false;
+  dragHandle = null;
+});
+
+  </script>
+</body>
+</html>
