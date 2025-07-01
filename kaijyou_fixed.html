@@ -2,7 +2,7 @@
 <html lang="ja">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
 
@@ -464,7 +464,7 @@ polyline.selected {
     <ul id="otherList"></ul>
     <ul id="standList"></ul>
     <ul id="controllerList"></ul>
-    <button id="downloadExcel">罫線付きExcelをダウンロード</button>
+    <button id="downloadCsvBtn">CSVダウンロード</button>
 </div>
 
 <div id="faderTable" style="position: fixed; left: 10px; bottom: 10px; background: white; padding: 10px; border: 1px solid #ccc; max-height: 300px; overflow-y: auto;">
@@ -523,6 +523,9 @@ let lightCount = 0;
 let otherCount = 0;
 let standCount = 0;
 let controllerCount = 0;
+let isDragging = false;
+let dragHandle = null;
+
 
 venues.forEach(v => {
   const btn = document.createElement("button");
@@ -819,10 +822,10 @@ document.addEventListener("mouseup", () => {
 
   // クリックイベント追加（選択 + 信号線接続判定）
   light.addEventListener("click", (e) => {
-    e.stopPropagation();
-    handleLightClick(light, e); // ←既存の選択処理
-    handleControllerClick(light, e); // ←新しく追加
-  });
+  e.stopPropagation();
+  handleLightClick(light, e); // ← 正しい処理
+});
+
   
 
   const rotateHandle = document.createElement("div");
@@ -858,9 +861,9 @@ document.addEventListener("mouseup", () => {
 // element.addEventListener("click", ...) ← NG
 light.addEventListener("click", (e) => {
   e.stopPropagation();
-  handleControllerClick(controller, e); // ←既存の選択処理
-  handleControllerClick(controller, e); // ←新しく追加
+  handleLightClick(light, e); // ✅ 正しい
 });
+
 
 addToFaderTable(light, classType, `${displayName}${lightCount}`);
 
@@ -1439,9 +1442,12 @@ function lineExists(elem1, elem2) {
       polyline.setAttribute("fill", "none");
       polyline.style.pointerEvents = "visiblePainted"; // クリック可能にする
 
+      polyline.classList.add("signal-line");  // ←これが必要なのに、click イベント内でしか設定されてない
+
       polyline.addEventListener("click", () => {
-  showCableLengthSelector(polyline); // ← 選択肢を出して dataset.length を設定する関数
-});
+      if (polyline.dataset.length) return;
+      showCableLengthSelector(polyline); // ← 選択肢を出して dataset.length を設定する関数
+      });
 
       const from = getCenter(fromEl);
       const to = getCenter(toEl);
@@ -1648,6 +1654,14 @@ function updateLinesForLight(light) {
       points[points.length - 1] = to;
 
       updatePolyline(signal.polyline, points);
+
+const label = signal.polyline.querySelector(".length-label");
+if (label) {
+  const center = getPolylineCenter(signal.polyline);
+  label.style.left = `${center.x}px`;
+  label.style.top = `${center.y - 10}px`;
+}
+
     }
   });
 }
@@ -1664,9 +1678,18 @@ function updateLinesForController(controller) {
       points[points.length - 1] = to;
 
       updatePolyline(signal.polyline, points);
+
+      // ✅ ラベルも更新
+      const label = signal.polyline.querySelector(".length-label");
+      if (label) {
+        const center = getPolylineCenter(signal.polyline);
+        label.style.left = `${center.x}px`;
+        label.style.top = `${center.y - 10}px`;
+      }
     }
   });
 }
+
 
 
 // 全ての信号線を削除
@@ -1843,6 +1866,20 @@ function showCableLengthLabel(line, text) {
   document.body.appendChild(label);
 }
 
+function getPolylineCenter(polyline) {
+  const points = JSON.parse(polyline.dataset.points);
+  let sumX = 0, sumY = 0;
+  points.forEach(p => {
+    sumX += p.x;
+    sumY += p.y;
+  });
+  return {
+    x: sumX / points.length,
+    y: sumY / points.length
+  };
+}
+
+
 
 function showCableLengthSelector(line) {
   // すでにあるセレクタがあれば消す
@@ -1856,13 +1893,10 @@ function showCableLengthSelector(line) {
   selector.id = "cableLengthSelector";
   selector.style.position = "absolute";
 
-  // 信号線の位置を取得してセレクタを置く位置を決める
-const bbox = line.getBoundingClientRect();
-const centerX = bbox.left + bbox.width / 2 + window.scrollX;
-const centerY = bbox.top + bbox.height / 2 + window.scrollY;
+const center = getPolylineCenter(line);
+selector.style.left = `${center.x}px`;
+selector.style.top = `${center.y - 10}px`; // 真上に表示
 
-selector.style.left = `${centerX}px`;
-selector.style.top = `${centerY - 10}px`; // 10px 上にずらす（好みで調整）
 
 
   // 選択肢追加
@@ -1895,16 +1929,10 @@ selector.style.top = `${centerY - 10}px`; // 10px 上にずらす（好みで調
   label.style.fontSize = "12px";
   label.style.pointerEvents = "none";
 
-  // 信号線の中央に配置
-  const x1 = parseInt(line.dataset.x1);
-  const y1 = parseInt(line.dataset.y1);
-  const x2 = parseInt(line.dataset.x2);
-  const y2 = parseInt(line.dataset.y2);
-  const centerX = (x1 + x2) / 2;
-  const centerY = (y1 + y2) / 2;
+const center = getPolylineCenter(line);
+label.style.left = `${center.x}px`;
+label.style.top = `${center.y - 10}px`;
 
-  label.style.left = `${centerX}px`;
-  label.style.top = `${centerY}px`;
 
   // stage 上にラベルを表示
   stage.appendChild(label);
@@ -2455,8 +2483,6 @@ document.getElementById("downloadPdfBtn").addEventListener("click", () => {
 document.getElementById("downloadExcel").addEventListener("click", async () => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("機材リスト");
-
-
 
   const rows = [];
   rows.push(["Material List"]);
